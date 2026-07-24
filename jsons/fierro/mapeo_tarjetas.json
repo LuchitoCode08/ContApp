@@ -1,0 +1,20 @@
+{
+    "tarjetas": [
+        ["^Comisión Tarjeta CR AMEX T CR AMEX", "Comisión T CR AMEX"],
+        ["^Comisión Tarjeta CR Credencial T CR Credencial", "Comisión T CR Credencial"],
+        ["^Comisión Tarjeta CR Diners T CR Diners", "Comisión T CR Diners"],
+        ["^Comisión Tarjeta CR Éxito T CR Éxito", "Comisión T CR Éxito"],
+        ["^Comisión Tarjeta CR Falabella T CR Falabella", "Comisión T CR Falabella"],
+        ["^Comisión Tarjeta CR MasterCard T CR Mastercard", "Comisión T CR MasterCard"],
+        ["^Comisión Tarjeta CR Visa T CR Visa", "Comisión T CR Visa"],
+        ["^Comisión Tarjeta DB MasterCard T DB MasterCard", "Comisión T DB MasterCard"],
+        ["^Comisión Tarjeta DB Visa T DB Visa", "Comisión T DB Visa"],
+        ["^Comisión Tarjeta VtaOnline DB MasterCard VtaOnline DB MasterCard", "Com VtaOL DB Master"],
+        ["^Tarjeta CR AMEX T CR AMEX", "Tarjeta T CR AMEX"],
+        ["^Tarjeta CR Credencial T CR Credencial", "Tarjeta T CR Credencial"],
+        ["^Tarjeta CR Diners T CR Diners", "Tarjeta T CR Diners"],
+        ["^Tarjeta CR MasterCard T CR MasterCard", "Tarjeta T CR Mastercard"],
+        ["^Tarjeta DB MasterCard T DB MasterCard", "Tarjeta T DB MasterCard"],
+        ["^Tarjeta VtaOnline DB MasterCard VtaOnline DB MasterCard", "Tarjeta vta OL DB Master"]
+    ]
+}

@@ -1,23 +1,28 @@
 """Proceso: Interfaz Zeus.
 
-Entrada: 1 archivo Excel.
-Salida: mismo Excel depurado (modo produccion) o copia (modo prueba).
-Reglas: leidas desde jsons/zeus/ (1 JSON con pares patron -> valor).
+Entrada: Excel 'Interfaz Final Zeus.xlsx' (con la hoja 'Exportar').
+Salida: mismo Excel con 2 hojas agregadas:
+        - 'Exportar - Copia' (datos sin modificar, con 'Cuenta1' depurada).
+        - 'Depurado' (datos con Valor2, BaseAbs, Tarifa y las
+          agrupaciones por Nit/Cuenta1/Fecha aplicadas).
+
+Migrado desde ``scripts/InterfazZeus.py``:
+- lee el Excel que se le pasa como parametro (antes usaba uno fijo en
+  ~/Downloads);
+- respeta el modo_prueba: en modo prueba copia el Excel a la carpeta
+  temporal en vez de modificar el original;
+- lee los auxiliares desde ``jsons/zeus/auxiliares_zeus.json``.
 """
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
-from openpyxl import load_workbook
 
 from procesos.base import ProcesoBase, ResultadoProceso
-from utils.archivos import (
-    carpeta_modo_prueba,
-    carpeta_resultados,
-    timestamp_unico,
-)
+from utils.archivos import carpeta_modo_prueba, carpeta_resultados
 from utils.bitacora import log
 from utils.json_manager import leer_json
 
@@ -25,9 +30,18 @@ RAIZ = Path(__file__).resolve().parent.parent
 
 
 class ProcesoZeus(ProcesoBase):
-    """Depura un Excel en sitio: agrega la hoja 'Depurado'."""
+    """Depura el Excel de Zeus: cuentas 8 digitos -> 6 digitos,
+    calcula Valor2/BaseAbs/Tarifa y agrupa por Nit/Cuenta1/Fecha."""
 
     LOG_PREFIX = "[Zeus]"
+
+    def __init__(self) -> None:
+        super().__init__()
+        json_dir = RAIZ / "jsons" / "zeus"
+        aux_data = leer_json(json_dir / "auxiliares_zeus.json")
+        self.aux: dict[str, str] = {
+            patron: remplazo for patron, remplazo in aux_data["auxiliares"]
+        }
 
     @property
     def nombre(self) -> str:
@@ -36,8 +50,10 @@ class ProcesoZeus(ProcesoBase):
     @property
     def descripcion(self) -> str:
         return (
-            "Depura un Excel en sitio. Recibe un Excel y agrega la hoja "
-            "'Depurado' con las reglas aplicadas."
+            "Depura el Excel de Zeus (hoja 'Exportar'): auxiliares de 8 "
+            "digitos a 6 digitos, Valor2, BaseAbs, Tarifa y agrupacion "
+            "por Nit/Cuenta1/Fecha. Agrega las hojas 'Exportar - Copia' "
+            "y 'Depurado'."
         )
 
     @property
@@ -61,30 +77,85 @@ class ProcesoZeus(ProcesoBase):
             )
         return None
 
-    def _leer_excel(self, ruta: Path) -> dict[str, pd.DataFrame]:
-        return pd.read_excel(ruta, sheet_name=None)
+    # ------------------------------------------------------------------
+    # Depuracion: migracion literal del script original
+    # ------------------------------------------------------------------
+    def copy_data(self, archivo: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
+        data_frame_copia = pd.read_excel(archivo, dtype=str)
 
-    def _aplicar_reglas(self, df: pd.DataFrame) -> pd.DataFrame:
-        reglas_data = leer_json(RAIZ / "jsons" / "zeus" / "auxiliares.json")
-        auxiliares = reglas_data.get("auxiliares", [])
-        log().info("%s %d pares de auxiliares cargados", self.LOG_PREFIX, len(auxiliares))
+        # Pasar auxiliares (Cuenta1) de 8 digitos a 6 digitos.
+        for patron, remplazo in self.aux.items():
+            data_frame_copia["Cuenta1"] = data_frame_copia["Cuenta1"].str.replace(
+                patron, remplazo, regex=True,
+            )
 
-        df = df.copy()
+        copia = data_frame_copia.copy()
 
-        col_desc = None
-        for candidata in ("Descripcion", "Descripción", "descripcion", "DESCRIPCION"):
-            if candidata in df.columns:
-                col_desc = candidata
-                break
+        # Columnas numericas y fecha.
+        numericos = ["valor", "Base"]
+        for col in numericos:
+            copia[col] = pd.to_numeric(copia[col], errors="coerce")
+        copia["Fecha"] = pd.to_datetime(
+            copia["Fecha"], errors="coerce", dayfirst=False,
+        ).dt.date
 
-        if col_desc is not None and auxiliares:
-            for patron, valor in auxiliares:
-                df[col_desc] = df[col_desc].astype(str).str.replace(
-                    re.compile(patron), valor, regex=True,
-                )
+        # Columna Valor 2: negativo si Tipo_Movto == 'C'.
+        maskC = copia["Tipo_Movto"].str.strip() == "C"
+        copia["Valor2"] = np.where(maskC, -copia["valor"], copia["valor"])
+        copia["BaseAbs"] = copia["Base"].abs()
 
-        return df
+        # Base de retenciones.
+        cuentasRetenciones = re = __import__("re").compile(r"(?:2365|2367|2368)")
+        maskRetenciones = copia["Cuenta1"].str.match(cuentasRetenciones)
+        copia["Tarifa"] = np.where(
+            maskRetenciones & (copia["BaseAbs"] != 0),
+            (copia["valor"] / copia["BaseAbs"]) * 100,
+            np.nan,
+        ).round(2)
+        copia.loc[maskRetenciones, "Concepto"] = copia.loc[
+            maskRetenciones, "BaseAbs"
+        ].astype(str)
 
+        # Agrupacion por Nit / Cuenta1 / Fecha.
+        copia["Cuenta1"] = copia["Cuenta1"].str.strip()
+        cuentasPorAgrupar = [
+            "7101", "7105", "119006", "134597", "134598", "143507",
+            "280505", "280523", "530519", "613528",
+        ]
+        maskCuentasAgrupadas = copia["Cuenta1"].isin(cuentasPorAgrupar)
+        copia.loc[maskCuentasAgrupadas, "Valor"] = copia.groupby(
+            ["Nit", "Cuenta1", "Fecha"],
+        )[["valor", "Valor2"]].transform("sum")
+        copia.loc[maskCuentasAgrupadas] = copia.drop_duplicates(
+            subset=["Nit", "Cuenta1", "Fecha"], keep="first",
+        )
+
+        return data_frame_copia, copia
+
+    # ------------------------------------------------------------------
+    # Escritura de las 2 hojas en el Excel
+    # ------------------------------------------------------------------
+    def writer_excel(self, archivo: Path, df: pd.DataFrame, hoja: str) -> None:
+        with pd.ExcelWriter(
+            archivo, engine="openpyxl", mode="a", if_sheet_exists="replace",
+        ) as writer:
+            df.to_excel(writer, sheet_name=hoja, index=False)
+            ws = writer.sheets[hoja]
+            for col in ws.iter_cols(1, ws.max_column):
+                if col[0].value == "Fecha":
+                    for cell in col[1:]:
+                        cell.number_format = "D-MM-YYYY"
+            for hoja_nativa in writer.sheets.values():
+                for columna in hoja_nativa.columns:
+                    max_len = max(len(str(c.value or "")) for c in columna)
+                    letra_columna = columna[0].column_letter
+                    hoja_nativa.column_dimensions[letra_columna].width = max(
+                        max_len + 1, 10,
+                    )
+
+    # ------------------------------------------------------------------
+    # Ejecucion
+    # ------------------------------------------------------------------
     def ejecutar(
         self,
         archivos: list[Path],
@@ -94,53 +165,35 @@ class ProcesoZeus(ProcesoBase):
         excel_path = archivos[0]
 
         try:
-            data = self._leer_excel(excel_path)
+            copia, depurado = self.copy_data(excel_path)
         except Exception as e:
-            return ResultadoProceso(
-                exito=False,
-                mensaje=f"No se pudo leer el Excel: {e}",
-            )
-        log().info("%s %d hoja(s) leida(s)", self.LOG_PREFIX, len(data))
+            return ResultadoProceso(exito=False, mensaje=f"Error al procesar: {e}")
 
-        # Tomar la primera hoja para la hoja 'Depurado'.
-        primera_hoja = next(iter(data.values()))
-        depurado = self._aplicar_reglas(primera_hoja)
-
-        # Determinar donde escribir.
         if modo_prueba:
             carpeta = carpeta_modo_prueba(RAIZ / "resultados", self.nombre)
-            ts = timestamp_unico()
-            destino = carpeta / f"{excel_path.stem}_depurado_{ts}.xlsx"
+            import shutil
+            destino = carpeta / excel_path.name
+            shutil.copy2(excel_path, destino)
+            archivo_trabajo = destino
+            archivos_originales: list[Path] = []
         else:
-            carpeta = carpeta_resultados(RAIZ / "resultados", self.nombre)
-            destino = excel_path  # en sitio
+            archivo_trabajo = excel_path
+            archivos_originales = [excel_path]
 
         try:
-            # Si es modo produccion, modificamos el archivo en sitio (mode='a').
-            if not modo_prueba:
-                wb = load_workbook(destino)
-                with pd.ExcelWriter(destino, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
-                    depurado.to_excel(writer, sheet_name="Depurado", index=False)
-            else:
-                # Modo prueba: copia el Excel original y le agrega la hoja Depurado.
-                import shutil
-                shutil.copy2(excel_path, destino)
-                with pd.ExcelWriter(destino, engine="openpyxl", mode="w") as writer:
-                    for nombre, df in data.items():
-                        df.to_excel(writer, sheet_name=nombre[:31] or "Hoja1", index=False)
-                    depurado.to_excel(writer, sheet_name="Depurado", index=False)
+            self.writer_excel(archivo_trabajo, copia, "Exportar - Copia")
+            self.writer_excel(archivo_trabajo, depurado, "Depurado")
         except Exception as e:
             return ResultadoProceso(
-                exito=False,
-                mensaje=f"No se pudo escribir el Excel: {e}",
+                exito=False, mensaje=f"No se pudo escribir el Excel: {e}",
             )
 
-        log().info("%s Generado: %s", self.LOG_PREFIX, destino.name)
+        log().info("%s Excel procesado: %s", self.LOG_PREFIX, archivo_trabajo.name)
 
         return ResultadoProceso(
             exito=True,
             mensaje="Zeus ejecutado correctamente.",
-            archivos_salida=[destino],
-            archivos_salida_originales=[excel_path] if not modo_prueba else [],
-            detalles={"hojas_procesadas": list(data.keys())},
+            archivos_salida=[archivo_trabajo],
+            archivos_salida_originales=archivos_originales,
+            detalles={"filas_originales": len(copia), "filas_depurado": len(depurado)},
         )

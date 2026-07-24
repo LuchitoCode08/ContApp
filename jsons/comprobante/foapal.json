@@ -1,0 +1,356 @@
+{
+    "creditos": {
+        "1334": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "C"
+        },
+        "2999": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "999999",
+            "Cuenta": "421010",
+            "Programa": "999999",
+            "D/C": "C"
+        },
+        "4449": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "511560",
+            "Programa": "999999",
+            "D/C": "C"
+        },
+        "4871": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "C"
+        },
+        "5386": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "C"
+        },
+        "6055": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "C"
+        },
+        "6557": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "C"
+        },
+        "8233": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "C"
+        },
+        "8999": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "999999",
+            "Cuenta": "421010",
+            "Programa": "999999",
+            "D/C": "C"
+        },
+        "9838": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "C"
+        }
+    },
+    "debitos": {
+        "480": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "609": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "823": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "862": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "892": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "1233": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "1265": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "1333": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "1345": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "1371": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "1393": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "1670": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "1675": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "3339": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "511560",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "4733": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "5055": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "5492": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "5498": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "5557": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "6339": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "6375": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "6648": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "6747": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "6753": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "6835": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "6844": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "6881": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "7116": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "7251": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530521",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "7333": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "7371": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "7522": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "7595": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "7597": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "8447": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "8459": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "9334": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "9729": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "9837": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        },
+        "9954": {
+            "Fondo": "FOPNAL",
+            "Organizacion": "13201",
+            "Cuenta": "530515",
+            "Programa": "999999",
+            "D/C": "D"
+        }
+    }
+}
