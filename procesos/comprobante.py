@@ -291,6 +291,18 @@ class ProcesoComprobante(ProcesoBase):
 
     # ------------------------------------------------------------------
     # Aplicacion del FOAPAL -> fzrcoco.xlsx
+    #
+    # Estructura de ``df_conceptos`` (viene de ``_copy_data``):
+    #   col 0: cuenta Bancolombia
+    #   col 1: oficina
+    #   col 2: dcto
+    #   col 3: fecha (DD/MM/YYYY) -- la pisamos con formato "dd-Month-yyyy"
+    #   col 4: VACIO (siempre None en el CSV de Bancolombia)
+    #   col 5: valor
+    #   col 6: codigo de concepto (4 digitos, ej: 480, 1334, 2999)
+    #   col 7: descripcion del concepto (ej: "ABONO INTERESES AHORROS")
+    #   col 8: (siempre 0)
+    #   col 9: Codigo Contable (agregado por _agregar_codigo_contable)
     # ------------------------------------------------------------------
     def _aplicar_foapal(
         self, df_conceptos: pd.DataFrame, carpeta: Path,
@@ -317,14 +329,22 @@ class ProcesoComprobante(ProcesoBase):
             debitos = self.foapal_config.get("debitos", {})
             filas: list[list] = []
             for _, fila in df.iterrows():
-                clave_concepto = str(fila.iloc[3]).strip()
+                # Codigo del concepto: columna 6 (NO columna 3 como en
+                # el script original; la estructura cambio porque ahora
+                # ``_agregar_codigo_contable`` inserta una columna al
+                # final con el codigo contable).
+                clave_concepto = str(fila.iloc[6]).strip()
                 foapal_info = creditos.get(clave_concepto) or debitos.get(clave_concepto)
                 if foapal_info is None:
                     continue
-                codigo_contable = str(fila.iloc[5]).strip()
-                concepto = fila.iloc[4]
-                valor = abs(fila.iloc[2])
-                fecha = fila.iloc[1]
+                # Codigo contable: columna 9 (ultima, agregada por
+                # ``_agregar_codigo_contable``).
+                codigo_contable = str(fila.iloc[9]).strip()
+                # Descripcion del concepto: columna 7 (la 4 es vacia
+                # en el CSV original de Bancolombia).
+                concepto = fila.iloc[7]
+                valor = abs(fila.iloc[5])
+                fecha = fila.iloc[3]
 
                 try:
                     codigo_contable_num = int(codigo_contable)
