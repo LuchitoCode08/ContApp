@@ -191,11 +191,11 @@ class ProcesoComprobante(ProcesoBase):
 
         # Filtro fiduciario: para el concepto 9729 conservar solo filas
         # cuya cuenta sea la cuenta interna de Bancolombia.
+        # Antes: ``df.apply(lambda row: any(...), axis=1)`` -> O(n) en
+        # Python puro. Ahora: comparacion vectorizada en C (10-100x
+        # mas rapido para volumenes grandes).
         mask_9729 = por_cuentas[6] == self.concepto_fiduciaria
-        mask_cuenta_valida = por_cuentas.apply(
-            lambda row: any(str(v) == self.cuenta_bancolombia for v in row),
-            axis=1,
-        )
+        mask_cuenta_valida = por_cuentas.eq(self.cuenta_bancolombia).any(axis=1)
         por_cuentas = por_cuentas[~mask_9729 | mask_cuenta_valida]
 
         # Fecha DD/MM/YYYY.
