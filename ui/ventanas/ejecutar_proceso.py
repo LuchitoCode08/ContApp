@@ -1,31 +1,21 @@
 """Pantalla Procesos: ejecutar cualquiera de los 3 procesos desde la UI.
 
-Estructura:
-+--------------------------------------------------+
-| Selector de proceso (Combobox)                  |
-+--------------------------------------------------+
-| Descripcion del proceso seleccionado             |
-+--------------------------------------------------+
-| DropZone (arrastrar archivos / examinar)        |
-+--------------------------------------------------+
-| Lista de archivos cargados                       |
-+--------------------------------------------------+
-| [Quitar ultimo] [Limpiar] [Ejecutar]             |
-+--------------------------------------------------+
-| Barra de progreso + label de estado              |
-+--------------------------------------------------+
-| Tabla con los archivos generados                 |
-+--------------------------------------------------+
+Flujo:
+    1. Vista GRID: muestra tarjetas con los procesos disponibles.
+       El usuario hace click en una tarjeta para elegir.
+    2. Vista EJECUCION: aparece el DropZone + lista + ejecutar +
+       resultados, todo para el proceso elegido.
+       Boton "Volver" regresa al grid.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QThread, Qt, Signal
+from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
-    QComboBox,
     QFileDialog,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -33,6 +23,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -41,7 +32,16 @@ from app.config import get_config
 from procesos.base import ProcesoBase, ResultadoProceso
 from ui.widgets.drop_zone import DropZone
 from ui.widgets.tabla_resultados import TablaResultados
+from ui.widgets.tarjeta_proceso import TarjetaProceso
 from utils.bitacora import log
+
+
+# Iconos por proceso (emojis simples).
+ICONOS: dict[str, str] = {
+    "comprobante": "📋",
+    "fierro": "🔥",
+    "zeus": "⚡",
+}
 
 
 class WorkerEjecucion(QThread):
@@ -50,8 +50,12 @@ class WorkerEjecucion(QThread):
     terminado = Signal(object)  # ResultadoProceso
     error = Signal(str)
 
-    def __init__(self, proceso: ProcesoBase, archivos: list[Path],
-                 modo_prueba: bool) -> None:
+    def __init__(
+        self,
+        proceso: ProcesoBase,
+        archivos: list[Path],
+        modo_prueba: bool,
+    ) -> None:
         super().__init__()
         self.proceso = proceso
         self.archivos = archivos
@@ -68,50 +72,47 @@ class WorkerEjecucion(QThread):
             self.error.emit(str(e))
 
 
-class PantallaProcesos(QWidget):
-    """Pantalla para seleccionar proceso y ejecutarlo."""
+class VistaEjecucion(QWidget):
+    """Sub-vista que muestra el DropZone + ejecutar para UN proceso."""
+
+    proceso_cambiado = Signal()  # para volver al grid
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._cfg = get_config()
         self._archivos: list[Path] = []
         self._worker: WorkerEjecucion | None = None
-
+        self._nombre_proceso: str = ""
         self._construir_ui()
 
     def _construir_ui(self) -> None:
         layout = QVBoxLayout(self)
 
-        # --- Selector de proceso -------------------------------------
-        layout.addWidget(QLabel("<h2>Ejecutar proceso</h2>"))
+        # --- Header con boton "Volver" + nombre del proceso ---------
+        header = QHBoxLayout()
+        self.btn_volver = QPushButton("← Cambiar proceso")
+        self.btn_volver.clicked.connect(self.proceso_cambiado.emit)
+        header.addWidget(self.btn_volver)
+        self._titulo = QLabel("")
+        self._titulo.setStyleSheet("font-size: 14px; font-weight: bold;")
+        header.addWidget(self._titulo)
+        header.addStretch()
+        layout.addLayout(header)
 
-        row = QHBoxLayout()
-        row.addWidget(QLabel("Proceso:"))
-        self.combo = QComboBox()
-        # Cargar nombres y descripciones desde la config.
-        for nombre in self._cfg.nombres_procesos():
-            cls = self._cfg.procesos[nombre]
-            self.combo.addItem(nombre)
-            # Guardamos la descripcion en user data para mostrarla.
-            self.combo.setItemData(self.combo.count() - 1, cls().descripcion)
-        self.combo.currentIndexChanged.connect(self._on_cambio_proceso)
-        row.addWidget(self.combo, 1)
-        layout.addLayout(row)
+        # Descripcion.
+        self._desc = QLabel("")
+        self._desc.setWordWrap(True)
+        self._desc.setStyleSheet("color: #555; padding: 4px;")
+        layout.addWidget(self._desc)
 
-        # Descripcion del proceso.
-        self._desc_label = QLabel("")
-        self._desc_label.setWordWrap(True)
-        self._desc_label.setStyleSheet("color: #555; padding: 4px;")
-        layout.addWidget(self._desc_label)
-
-        # --- DropZone -----------------------------------------------
+        # --- DropZone -------------------------------------------------
         self.drop_zone = DropZone(
             mensaje="Arrastra el archivo aqui o haz clic en Examinar",
         )
         self.drop_zone.archivos_seleccionados.connect(self._agregar_archivos)
         layout.addWidget(self.drop_zone)
 
-        # --- Lista de archivos --------------------------------------
+        # --- Lista de archivos ---------------------------------------
         layout.addWidget(QLabel("Archivos cargados:"))
         self.lista = QListWidget()
         self.lista.setMaximumHeight(120)
@@ -137,7 +138,7 @@ class PantallaProcesos(QWidget):
 
         # --- Progreso / estado --------------------------------------
         self.progress = QProgressBar()
-        self.progress.setRange(0, 0)  # Indeterminado.
+        self.progress.setRange(0, 0)
         self.progress.hide()
         layout.addWidget(self.progress)
         self.estado = QLabel("")
@@ -155,20 +156,34 @@ class PantallaProcesos(QWidget):
         self.resultados = TablaResultados()
         layout.addWidget(self.resultados, 1)
 
-        # Estado inicial.
-        self._on_cambio_proceso(0)
+        self._actualizar_estado()
+
+    # -- API publica -------------------------------------------------
+
+    def configurar(self, nombre: str) -> None:
+        """Configura esta vista para el proceso dado."""
+        self._nombre_proceso = nombre
+        cls = self._cfg.procesos[nombre]
+        instancia = cls()
+        icono = ICONOS.get(nombre, "▶")
+        self._titulo.setText(f"{icono} {nombre}")
+        self._desc.setText(
+            f"<b>{nombre}</b>: {instancia.descripcion}"
+        )
+        self.drop_zone.set_extensiones_aceptadas(
+            instancia.extensiones_entrada
+        )
+        self._limpiar_archivos()
 
     # -- Manejo de archivos -----------------------------------------
 
     def _agregar_archivos(self, archivos: list[Path]) -> None:
-        # Validar extensiones.
-        proceso_cls = self._cfg.procesos[self.combo.currentText()]
-        instancia = proceso_cls()
+        cls = self._cfg.procesos[self._nombre_proceso]
+        instancia = cls()
         error = instancia.validar_archivos(archivos)
         if error:
             QMessageBox.warning(self, "Archivos invalidos", error)
             return
-        # Agregar evitando duplicados.
         for a in archivos:
             if a not in self._archivos:
                 self._archivos.append(a)
@@ -197,18 +212,6 @@ class PantallaProcesos(QWidget):
             if n else "Arrastra archivos para empezar."
         )
 
-    # -- Cambio de proceso ------------------------------------------
-
-    def _on_cambio_proceso(self, idx: int) -> None:
-        nombre = self.combo.itemText(idx)
-        desc = self.combo.itemData(idx) or ""
-        self._desc_label.setText(f"<b>{nombre}</b>: {desc}")
-        # Actualizar extensiones aceptadas del drop zone.
-        cls = self._cfg.procesos[nombre]
-        self.drop_zone.set_extensiones_aceptadas(cls().extensiones_entrada)
-        # Limpiar archivos y resultados al cambiar de proceso.
-        self._limpiar_archivos()
-
     # -- Ejecucion ---------------------------------------------------
 
     def _ejecutar(self) -> None:
@@ -220,23 +223,18 @@ class PantallaProcesos(QWidget):
         if self._worker is not None and self._worker.isRunning():
             return
 
-        nombre = self.combo.currentText()
-        proceso_cls = self._cfg.procesos[nombre]
-        proceso = proceso_cls()
+        cls = self._cfg.procesos[self._nombre_proceso]
+        proceso = cls()
 
-        # Validar antes de ejecutar.
         error = proceso.validar_archivos(self._archivos)
         if error:
             QMessageBox.warning(self, "Archivos invalidos", error)
             return
 
-        # Deshabilitar UI.
         self.btn_ejecutar.setEnabled(False)
-        self.combo.setEnabled(False)
         self.progress.show()
-        self.estado.setText(f"Ejecutando {nombre}...")
+        self.estado.setText(f"Ejecutando {self._nombre_proceso}...")
 
-        # Lanzar worker.
         self._worker = WorkerEjecucion(
             proceso, list(self._archivos), self._cfg.modo_prueba,
         )
@@ -247,7 +245,6 @@ class PantallaProcesos(QWidget):
     def _on_terminado(self, resultado: ResultadoProceso) -> None:
         self.progress.hide()
         self.btn_ejecutar.setEnabled(True)
-        self.combo.setEnabled(True)
 
         if resultado.exito:
             archivos = resultado.archivos_salida
@@ -270,6 +267,97 @@ class PantallaProcesos(QWidget):
     def _on_error(self, msg: str) -> None:
         self.progress.hide()
         self.btn_ejecutar.setEnabled(True)
-        self.combo.setEnabled(True)
         self.estado.setText(f"[ERROR] {msg}")
         QMessageBox.critical(self, "Error inesperado", msg)
+
+
+class VistaGridProcesos(QWidget):
+    """Sub-vista que muestra tarjetas con los procesos disponibles."""
+
+    proceso_seleccionado = Signal(str)  # nombre del proceso
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._cfg = get_config()
+        self._construir_ui()
+
+    def _construir_ui(self) -> None:
+        layout = QVBoxLayout(self)
+
+        titulo = QLabel("¿Que proceso queres ejecutar?")
+        titulo.setStyleSheet("font-size: 16px; font-weight: bold;")
+        layout.addWidget(titulo)
+
+        sub = QLabel(
+            "Elegi una opcion para ver que tipo de archivo necesita."
+        )
+        sub.setStyleSheet("color: #555;")
+        layout.addWidget(sub)
+
+        layout.addSpacing(12)
+
+        # Grid de tarjetas (2 columnas).
+        grid_container = QWidget()
+        grid = QGridLayout(grid_container)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setSpacing(16)
+
+        nombres = self._cfg.nombres_procesos()
+        columnas = 2
+        for i, nombre in enumerate(nombres):
+            cls = self._cfg.procesos[nombre]
+            icono = ICONOS.get(nombre, "▶")
+            tarjeta = TarjetaProceso(
+                nombre=nombre,
+                descripcion=cls().descripcion,
+                icono=icono,
+            )
+            tarjeta.seleccionado.connect(self.proceso_seleccionado.emit)
+            fila = i // columnas
+            col = i % columnas
+            grid.addWidget(tarjeta, fila, col)
+            grid.setColumnStretch(col, 1)
+
+        # Si hay menos de `columnas * filas` tarjetas, centramos.
+        if len(nombres) < columnas:
+            grid.setColumnStretch(columnas, 1)
+
+        layout.addWidget(grid_container)
+        layout.addStretch()
+
+        # Pie: cantidad de procesos.
+        pie = QLabel(f"{len(nombres)} procesos disponibles.")
+        pie.setStyleSheet("color: #888; font-size: 11px;")
+        layout.addWidget(pie)
+
+
+class PantallaProcesos(QWidget):
+    """Pantalla principal de Procesos con flujo de 2 vistas."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._cfg = get_config()
+
+        # Grid de seleccion.
+        self.vista_grid = VistaGridProcesos()
+        self.vista_grid.proceso_seleccionado.connect(self._ir_a_ejecucion)
+
+        # Vista de ejecucion (siempre existe, se reconfigura al cambiar).
+        self.vista_ejecucion = VistaEjecucion()
+        self.vista_ejecucion.proceso_cambiado.connect(self._ir_a_grid)
+
+        # Stack que alterna entre las dos vistas.
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self.vista_grid)   # index 0
+        self.stack.addWidget(self.vista_ejecucion)  # index 1
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.stack)
+
+    def _ir_a_ejecucion(self, nombre: str) -> None:
+        self.vista_ejecucion.configurar(nombre)
+        self.stack.setCurrentIndex(1)
+
+    def _ir_a_grid(self) -> None:
+        self.stack.setCurrentIndex(0)
