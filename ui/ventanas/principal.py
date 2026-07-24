@@ -122,14 +122,8 @@ class VentanaPrincipal(QMainWindow):
         return w
 
     def _crear_pantalla_procesos(self) -> QWidget:
-        w = QWidget()
-        layout = QVBoxLayout(w)
-        layout.addWidget(QLabel("<h2>Procesos</h2>"))
-        layout.addWidget(QLabel(
-            "Aqui podras ejecutar los 3 procesos (Comprobante, Fierro, Zeus)."
-        ))
-        layout.addStretch()
-        return w
+        from ui.ventanas.ejecutar_proceso import PantallaProcesos
+        return PantallaProcesos()
 
     def _crear_pantalla_diccionarios(self) -> QWidget:
         w = QWidget()
