@@ -1,0 +1,1 @@
+"""Paquete app: configuracion y punto de entrada de ContApp."""
