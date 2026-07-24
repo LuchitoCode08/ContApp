@@ -149,25 +149,70 @@ class ProcesoZeus(ProcesoBase):
         return data_frame_copia, copia
 
     # ------------------------------------------------------------------
-    # Escritura de las 2 hojas en el Excel
+    # Escritura de las 2 hojas en el Excel (estrategia hibrida write_only).
+    #
+    # Misma estrategia que en ``procesos/fierro.py``: en lugar de
+    # ``pd.ExcelWriter(mode='a')`` (que relee el workbook entero en
+    # cada llamada y es muy lento para archivos grandes), abrimos el
+    # workbook original en modo ``read_only``, creamos uno NUEVO en
+    # modo ``write_only``, copiamos solo las hojas que queremos
+    # preservar (``Exportar``) y agregamos las 2 hojas nuevas.
     # ------------------------------------------------------------------
-    def writer_excel(self, archivo: Path, df: pd.DataFrame, hoja: str) -> None:
-        with pd.ExcelWriter(
-            archivo, engine="openpyxl", mode="a", if_sheet_exists="replace",
-        ) as writer:
-            df.to_excel(writer, sheet_name=hoja, index=False)
-            ws = writer.sheets[hoja]
-            for col in ws.iter_cols(1, ws.max_column):
-                if col[0].value == "Fecha":
-                    for cell in col[1:]:
-                        cell.number_format = "D-MM-YYYY"
-            for hoja_nativa in writer.sheets.values():
-                for columna in hoja_nativa.columns:
-                    max_len = max(len(str(c.value or "")) for c in columna)
-                    letra_columna = columna[0].column_letter
-                    hoja_nativa.column_dimensions[letra_columna].width = max(
-                        max_len + 1, 10,
-                    )
+    def writer_excel(
+        self,
+        archivo_destino: Path,
+        archivo_origen: Path,
+        datos_por_hoja: dict[str, pd.DataFrame],
+        hojas_preservar: tuple[str, ...] = ("Exportar",),
+    ) -> None:
+        from openpyxl import Workbook
+
+        # 1) Leer las hojas a preservar del workbook original.
+        preservadas: dict[str, list[tuple]] = {}
+        from openpyxl import load_workbook
+        wb_lectura = load_workbook(archivo_origen, read_only=True)
+        try:
+            for nombre in hojas_preservar:
+                if nombre in wb_lectura.sheetnames:
+                    ws_orig = wb_lectura[nombre]
+                    preservadas[nombre] = [
+                        tuple(row)
+                        for row in ws_orig.iter_rows(values_only=True)
+                    ]
+        finally:
+            wb_lectura.close()
+
+        # 2) Crear workbook nuevo en modo write_only.
+        wb_nuevo = Workbook(write_only=True)
+
+        # 3) Volcar las hojas preservadas.
+        for nombre in hojas_preservar:
+            if nombre not in preservadas:
+                continue
+            ws = wb_nuevo.create_sheet(title=nombre)
+            for fila in preservadas[nombre]:
+                ws.append(fila)
+
+        # 4) Volcar las hojas nuevas (Exportar - Copia, Depurado).
+        def _sanitize(v):
+            if v is pd.NA:
+                return None
+            try:
+                if pd.isna(v):
+                    return None
+            except (TypeError, ValueError):
+                pass
+            return v
+
+        for nombre_hoja, df in datos_por_hoja.items():
+            ws = wb_nuevo.create_sheet(title=nombre_hoja)
+            ws.append(tuple(df.columns))
+            for fila in df.itertuples(index=False, name=None):
+                ws.append(tuple(_sanitize(v) for v in fila))
+
+        # 5) Guardar.
+        wb_nuevo.save(archivo_destino)
+        wb_nuevo.close()
 
     # ------------------------------------------------------------------
     # Ejecucion
@@ -197,8 +242,14 @@ class ProcesoZeus(ProcesoBase):
             archivos_originales = [excel_path]
 
         try:
-            self.writer_excel(archivo_trabajo, copia, "Exportar - Copia")
-            self.writer_excel(archivo_trabajo, depurado, "Depurado")
+            self.writer_excel(
+                archivo_destino=archivo_trabajo,
+                archivo_origen=excel_path,
+                datos_por_hoja={
+                    "Exportar - Copia": copia,
+                    "Depurado": depurado,
+                },
+            )
         except Exception as e:
             return ResultadoProceso(
                 exito=False, mensaje=f"No se pudo escribir el Excel: {e}",
