@@ -1,0 +1,33 @@
+# Entorno virtual
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Resultados (salidas, no se versionan)
+resultados/
+data/backups/
+
+# Bitácora (logs)
+data/bitacora/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Archivos temporales
+*.tmp
+*.bak
+*.log

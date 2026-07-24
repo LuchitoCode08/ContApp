@@ -1,0 +1,20 @@
+{
+  "creditos": {
+    "1334": {
+      "Fondo": "FOPNAL",
+      "Organizacion": "13201",
+      "Cuenta": "530515",
+      "Programa": "999999",
+      "D/C": "C"
+    }
+  },
+  "debitos": {
+    "2999": {
+      "Fondo": "FOPNAL",
+      "Organizacion": "13201",
+      "Cuenta": "530515",
+      "Programa": "999999",
+      "D/C": "D"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "Intereses": {
+    "1998": "AJUSTE INTERESES AHORROS DB"
+  },
+  "Gastos bancarios": {
+    "480": [
+      "COMIS CONSIGNACION SUCURSAL",
+      "COMIS CONSIGNACION CAJA"
+    ]
+  }
+}
