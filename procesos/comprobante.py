@@ -31,7 +31,33 @@ from utils.json_manager import leer_json
 RAIZ = Path(__file__).resolve().parent.parent
 
 ENCODING_FALLBACKS: tuple[str, ...] = ("utf-8", "utf-8-sig", "latin-1")
-COLUMNAS_NUMERICAS: list[int] = [0, 1, 2, 5, 8]
+
+# Estructura de las columnas del CSV de Bancolombia (el banco NO
+# pone headers, por eso usamos indices numericos):
+#   col 0: Cuenta              (cuenta Bancolombia, 10 digitos)
+#   col 1: Prefijo de cuenta   (oficina)
+#   col 2: Tipo                (Corriente / Ahorro)
+#   col 3: Fecha               (formato ddmmyyyy)
+#   col 4: Identificador       (codigo interno, irrelevante para FOAPAL)
+#   col 5: Valor               (valor del movimiento)
+#   col 6: Codigo de concepto  (4 digitos, ej: 480, 1334, 2999)
+#   col 7: Concepto            (descripcion textual del movimiento)
+#   col 8: Valor numerico      (valor sin signo, redundante con col 5)
+#   col 9: Codigo Contable     (agregado por _agregar_codigo_contable)
+COL_CUENTA = 0
+COL_PREFIJO = 1
+COL_TIPO = 2
+COL_FECHA = 3
+COL_ID = 4
+COL_VALOR = 5
+COL_CODIGO_CONCEPTO = 6
+COL_CONCEPTO = 7
+COL_VALOR_NUM = 8
+COL_CODIGO_CONTABLE = 9
+
+COLUMNAS_NUMERICAS: list[int] = [
+    COL_CUENTA, COL_PREFIJO, COL_TIPO, COL_VALOR, COL_VALOR_NUM,
+]
 CODIGO_EXCEPCION_FOAPAL: str = "119090"
 EXCEPCION_FOAPAL: dict = {
     "Fondo": "FOESPC",
@@ -226,24 +252,28 @@ class ProcesoComprobante(ProcesoBase):
         # Antes: ``df.apply(lambda row: any(...), axis=1)`` -> O(n) en
         # Python puro. Ahora: comparacion vectorizada en C (10-100x
         # mas rapido para volumenes grandes).
-        mask_9729 = por_cuentas[6] == self.concepto_fiduciaria
+        mask_9729 = por_cuentas[COL_CODIGO_CONCEPTO] == self.concepto_fiduciaria
         mask_cuenta_valida = por_cuentas.eq(self.cuenta_bancolombia).any(axis=1)
         por_cuentas = por_cuentas[~mask_9729 | mask_cuenta_valida]
 
         # Fecha DD/MM/YYYY.
-        por_cuentas[3] = pd.to_datetime(
-            por_cuentas[3], format="%d%m%Y", errors="coerce"
+        por_cuentas[COL_FECHA] = pd.to_datetime(
+            por_cuentas[COL_FECHA], format="%d%m%Y", errors="coerce"
         ).dt.strftime("%d/%m/%Y")
 
         # Conversion de columnas numericas.
         for col in COLUMNAS_NUMERICAS:
             por_cuentas[col] = pd.to_numeric(por_cuentas[col], errors="coerce")
-            if col == 5:
-                por_cuentas[col] = por_cuentas[col].replace(",", ".")
 
-        por_cuentas[6] = por_cuentas[6].astype(str).str.strip()
-        intereses = por_cuentas[por_cuentas[6].isin(self.codigos_interes)].copy()
-        gastos = por_cuentas[por_cuentas[6].isin(self.codigos_gastos)].copy()
+        por_cuentas[COL_CODIGO_CONCEPTO] = (
+            por_cuentas[COL_CODIGO_CONCEPTO].astype(str).str.strip()
+        )
+        intereses = por_cuentas[
+            por_cuentas[COL_CODIGO_CONCEPTO].isin(self.codigos_interes)
+        ].copy()
+        gastos = por_cuentas[
+            por_cuentas[COL_CODIGO_CONCEPTO].isin(self.codigos_gastos)
+        ].copy()
 
         por_cuentas = self._agregar_codigo_contable(por_cuentas)
         intereses = self._agregar_codigo_contable(intereses)
@@ -273,14 +303,17 @@ class ProcesoComprobante(ProcesoBase):
                     writer, sheet_name=nombre_hoja, header=False, index=False,
                 )
                 ws = writer.sheets[nombre_hoja]
+                # La columna "Valor" del CSV (COL_VALOR = 5) se escribe
+                # como columna 6 en el Excel porque ``header=False``.
+                COL_VALOR_EN_EXCEL = COL_VALOR + 1
                 for row in range(1, ws.max_row + 1):
-                    ws.cell(row=row, column=6).number_format = "0.00"
+                    ws.cell(row=row, column=COL_VALOR_EN_EXCEL).number_format = "0.00"
                 for col in ws.columns:
                     max_length = 0
                     column_letter = col[0].column_letter
                     column_index = col[0].column
                     for cell in col:
-                        if column_index == 6 and isinstance(cell.value, (int, float)):
+                        if column_index == COL_VALOR_EN_EXCEL and isinstance(cell.value, (int, float)):
                             cell.number_format = "0.00; [Red]-0.00"
                         if cell.value:
                             largo = len(str(cell.value))
@@ -293,16 +326,16 @@ class ProcesoComprobante(ProcesoBase):
     # Aplicacion del FOAPAL -> fzrcoco.xlsx
     #
     # Estructura de ``df_conceptos`` (viene de ``_copy_data``):
-    #   col 0: cuenta Bancolombia
-    #   col 1: oficina
-    #   col 2: dcto
-    #   col 3: fecha (DD/MM/YYYY) -- la pisamos con formato "dd-Month-yyyy"
-    #   col 4: VACIO (siempre None en el CSV de Bancolombia)
-    #   col 5: valor
-    #   col 6: codigo de concepto (4 digitos, ej: 480, 1334, 2999)
-    #   col 7: descripcion del concepto (ej: "ABONO INTERESES AHORROS")
-    #   col 8: (siempre 0)
-    #   col 9: Codigo Contable (agregado por _agregar_codigo_contable)
+    #   col 0  COL_CUENTA          (cuenta Bancolombia)
+    #   col 1  COL_PREFIJO          (oficina)
+    #   col 2  COL_TIPO             (Corriente / Ahorro)
+    #   col 3  COL_FECHA            (DD/MM/YYYY, la pisamos con "dd-Month-yyyy")
+    #   col 4  COL_ID               (codigo interno, no se usa)
+    #   col 5  COL_VALOR            (valor del movimiento)
+    #   col 6  COL_CODIGO_CONCEPTO  (4 digitos, ej: 480, 1334, 2999)
+    #   col 7  COL_CONCEPTO         (descripcion textual)
+    #   col 8  COL_VALOR_NUM        (valor sin signo, redundante)
+    #   col 9  COL_CODIGO_CONTABLE   (agregado por _agregar_codigo_contable)
     # ------------------------------------------------------------------
     def _aplicar_foapal(
         self, df_conceptos: pd.DataFrame, carpeta: Path,
@@ -312,10 +345,10 @@ class ProcesoComprobante(ProcesoBase):
             return None
         try:
             fechas = pd.to_datetime(
-                df_conceptos[3], format="%d/%m/%Y", errors="coerce"
+                df_conceptos[COL_FECHA], format="%d/%m/%Y", errors="coerce"
             )
             df = df_conceptos.copy()
-            df[3] = fechas.apply(
+            df[COL_FECHA] = fechas.apply(
                 lambda d: f"{d.day:02d}-{MESES_ES[d.month]}-{d.year}" if pd.notna(d) else ""
             )
 
@@ -329,22 +362,14 @@ class ProcesoComprobante(ProcesoBase):
             debitos = self.foapal_config.get("debitos", {})
             filas: list[list] = []
             for _, fila in df.iterrows():
-                # Codigo del concepto: columna 6 (NO columna 3 como en
-                # el script original; la estructura cambio porque ahora
-                # ``_agregar_codigo_contable`` inserta una columna al
-                # final con el codigo contable).
-                clave_concepto = str(fila.iloc[6]).strip()
+                clave_concepto = str(fila.iloc[COL_CODIGO_CONCEPTO]).strip()
                 foapal_info = creditos.get(clave_concepto) or debitos.get(clave_concepto)
                 if foapal_info is None:
                     continue
-                # Codigo contable: columna 9 (ultima, agregada por
-                # ``_agregar_codigo_contable``).
-                codigo_contable = str(fila.iloc[9]).strip()
-                # Descripcion del concepto: columna 7 (la 4 es vacia
-                # en el CSV original de Bancolombia).
-                concepto = fila.iloc[7]
-                valor = abs(fila.iloc[5])
-                fecha = fila.iloc[3]
+                codigo_contable = str(fila.iloc[COL_CODIGO_CONTABLE]).strip()
+                concepto = fila.iloc[COL_CONCEPTO]
+                valor = abs(fila.iloc[COL_VALOR])
+                fecha = fila.iloc[COL_FECHA]
 
                 try:
                     codigo_contable_num = int(codigo_contable)
