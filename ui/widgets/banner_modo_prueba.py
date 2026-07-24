@@ -21,8 +21,9 @@ class BannerModoPrueba(QLabel):
         font.setPointSize(11)
         font.setBold(True)
         self.setFont(font)
-        # Default: modo prueba activo (la app arranca asi por seguridad).
-        self.set_activo(True)
+        # Default: modo produccion. El usuario activa el modo prueba
+        # explicitamente con el switch.
+        self.set_activo(False)
 
     def set_activo(self, activo: bool) -> None:
         """Cambia el texto y color del banner segun el modo."""

@@ -31,7 +31,9 @@ class Config:
     """Estado global de la app."""
 
     usuario: str = ""
-    modo_prueba: bool = True
+    # Por default la app arranca en modo produccion.
+    # El usuario debe activar explicitamente el modo prueba.
+    modo_prueba: bool = False
 
     # Procesos disponibles: nombre -> clase.
     # Se llena en ``inicializar_procesos()``.
