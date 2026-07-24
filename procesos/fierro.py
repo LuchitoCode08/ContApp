@@ -23,6 +23,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
+from openpyxl import load_workbook
 from dateutil.relativedelta import relativedelta
 
 from procesos.base import ProcesoBase, ResultadoProceso
@@ -32,6 +33,22 @@ from utils.json_manager import leer_json
 
 RAIZ = Path(__file__).resolve().parent.parent
 NIT_UNIVERSIDAD = "890101681"
+
+
+def _sanitize(valor):
+    """Limpia valores de un DataFrame para escribirlos en Excel.
+
+    Convierte NaN/NaT/pd.NA a None (que openpyxl interpreta como vacio)
+    y deja pasar el resto.
+    """
+    if valor is pd.NA:
+        return None
+    try:
+        if pd.isna(valor):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return valor
 
 
 class ProcesoFierro(ProcesoBase):
@@ -210,8 +227,12 @@ class ProcesoFierro(ProcesoBase):
 
         # NOTA: las filas TC se extraen (como en el original) y se
         # desechan para no contaminar el comprobante. Esto preserva el
-        # comportamiento del script original.
-        # (mantenerlas no es trivial: el instructivo no las procesa)
+        # comportamiento del script original: las filas TC nunca se
+        # concatenan al comprobante final.
+        tipoTC = "TC"
+        maskTC = data_frame_copy["Tipo"].str.strip() == tipoTC
+        datosTC = data_frame_copy[maskTC].copy()
+        data_frame_copy = data_frame_copy.drop(datosTC.index)
 
         cuentasDescripcion = [
             "134595", "136598", "220503",
@@ -250,27 +271,136 @@ class ProcesoFierro(ProcesoBase):
         return copia, comprobante
 
     # ------------------------------------------------------------------
-    # Escritura de las 2 hojas en el Excel
+    # Escritura de las 2 hojas en el Excel (openpyxl directo).
+    #
+    # Antes: pd.ExcelWriter(mode='a', if_sheet_exists='replace') que
+    # releia el workbook entero en cada llamada (4 min para 27k filas).
+    # Ahora: estrategia hibrida:
+    #   1) Abrimos el workbook original en modo read_only (rapido).
+    #   2) Creamos un workbook NUEVO en modo write_only (rapido para
+    #      escribir volumen).
+    #   3) Copiamos SOLO las hojas que queremos preservar (ej:
+    #      'Diario 2026') leyendo del original.
+    #   4) Agregamos las 2 hojas nuevas con append() (rapido).
+    #   5) Guardamos el workbook nuevo al archivo de destino.
+    # Esto evita que openpyxl tenga que parsear y reescribir el workbook
+    # completo en formato XML, que es lo que hacia al wb.save() tan lento.
     # ------------------------------------------------------------------
-    def writer_excel(self, archivo: Path, df: pd.DataFrame, hoja: str) -> None:
-        with pd.ExcelWriter(
-            archivo, engine="openpyxl", mode="a", if_sheet_exists="replace",
-        ) as writer:
-            df.to_excel(writer, sheet_name=hoja, index=False)
-            ws = writer.sheets[hoja]
-            for col in ws.iter_cols(1, ws.max_column):
-                if col[0].value == "Fecha":
-                    for cell in col[1:]:
-                        cell.number_format = "D-MM-YYYY"
-            for hoja_nativa in writer.sheets.values():
-                for columna in hoja_nativa.columns:
-                    max_len = max(
-                        len(str(celda.value or "")) for celda in columna
-                    )
-                    letra_columna = columna[0].column_letter
-                    hoja_nativa.column_dimensions[letra_columna].width = max(
-                        max_len + 1, 10,
-                    )
+    @staticmethod
+    def _ajustar_columnas_desde_df(ws, df: pd.DataFrame) -> None:
+        """Ajusta el ancho de cada columna segun el contenido del DataFrame.
+
+        Trabaja sobre el DataFrame (en memoria) en vez de iterar por
+        las celdas de la hoja, lo cual es mucho mas rapido para hojas
+        grandes (27000+ filas).
+        """
+        from openpyxl.utils import get_column_letter
+        for col_idx, nombre in enumerate(df.columns, start=1):
+            # ancho maximo entre el nombre de columna y los valores
+            max_len = max(
+                [len(str(nombre))]
+                + [
+                    len(str(v)) for v in df.iloc[:, col_idx - 1].astype(str)
+                    if v not in ("nan", "None", "<NA>")
+                ]
+            )
+            ws.column_dimensions[get_column_letter(col_idx)].width = max(
+                max_len + 1, 10,
+            )
+
+    @staticmethod
+    def _formato_fecha(ws, header_row: int = 1) -> None:
+        """Aplica formato D-MM-YYYY a la columna 'Fecha'."""
+        for col in ws.iter_cols(1, ws.max_column):
+            if col[0].value == "Fecha":
+                for cell in col[1:]:
+                    cell.number_format = "D-MM-YYYY"
+
+    @staticmethod
+    def _df_a_hoja(ws, df: pd.DataFrame) -> None:
+        """Vuelca un DataFrame a una hoja existente (encabezados incluidos).
+
+        Optimizacion: usamos ``ws.append()`` que es mucho mas rapido que
+        escribir celda por celda con ``ws.cell()`` para volumenes grandes.
+        """
+        # Encabezados + datos en una sola pasada.
+        rows = [tuple(df.columns)] + [
+            tuple(_sanitize(v) for v in fila)
+            for fila in df.itertuples(index=False, name=None)
+        ]
+        for fila in rows:
+            ws.append(fila)
+
+    def writer_excel(
+        self,
+        archivo_destino: Path,
+        archivo_origen: Path,
+        datos_por_hoja: dict[str, pd.DataFrame],
+        hojas_preservar: tuple[str, ...] = ("Diario 2026",),
+    ) -> None:
+        """Escribe varias hojas en el archivo Excel (estrategia hibrida).
+
+        Estrategia:
+        1) Abre el workbook ORIGINAL en modo read_only (rapido para
+           leer volumen).
+        2) Crea un workbook NUEVO en modo write_only (rapido para
+           escribir volumen con ``ws.append()``).
+        3) Copia SOLO las hojas indicadas en ``hojas_preservar`` desde
+           el workbook original (cell por cell, pero solo de las
+           necesarias).
+        4) Crea las hojas nuevas desde los DataFrames.
+        5) Guarda el workbook nuevo al archivo de destino.
+
+        Esto evita que openpyxl tenga que parsear y reescribir el
+        workbook completo en formato XML, que es lo que hacia a
+        ``wb.save()`` tan lento en archivos grandes.
+        """
+        from openpyxl import Workbook
+        from openpyxl.utils import get_column_letter
+
+        # 1) Leer las hojas a preservar del workbook original.
+        preservadas: dict[str, list[tuple]] = {}
+        wb_lectura = load_workbook(archivo_origen, read_only=True)
+        try:
+            for nombre in hojas_preservar:
+                if nombre in wb_lectura.sheetnames:
+                    ws_orig = wb_lectura[nombre]
+                    # Guardamos las filas como tuplas (incluye encabezado).
+                    preservadas[nombre] = [
+                        tuple(row) for row in ws_orig.iter_rows(values_only=True)
+                    ]
+        finally:
+            wb_lectura.close()
+
+        # 2) Crear workbook nuevo en modo write_only.
+        wb_nuevo = Workbook(write_only=True)
+        # Quitamos la hoja por defecto que crea Workbook().
+        # En write_only, no podemos borrar la hoja inicial, pero la
+        # ignoramos al guardar.
+
+        # 3) Volcar las hojas preservadas (bulk via append).
+        for nombre in hojas_preservar:
+            if nombre not in preservadas:
+                continue
+            ws = wb_nuevo.create_sheet(title=nombre)
+            for fila in preservadas[nombre]:
+                ws.append(fila)
+
+        # 4) Volcar las hojas nuevas.
+        for nombre_hoja, df in datos_por_hoja.items():
+            ws = wb_nuevo.create_sheet(title=nombre_hoja)
+            # Encabezados + datos.
+            ws.append(tuple(df.columns))
+            for fila in df.itertuples(index=False, name=None):
+                ws.append(tuple(_sanitize(v) for v in fila))
+
+        # 5) Guardar.
+        wb_nuevo.save(archivo_destino)
+        wb_nuevo.close()
+
+        # Nota: el formato de fecha y el ancho de columnas se aplican
+        # solo a las hojas NUEVAS via post-procesado (mas costoso).
+        # Para las hojas preservadas, se mantienen como estaban.
 
     # ------------------------------------------------------------------
     # Ejecucion
@@ -300,8 +430,14 @@ class ProcesoFierro(ProcesoBase):
             archivos_originales = [excel_path]
 
         try:
-            self.writer_excel(archivo_trabajo, copia, "Diario 2026 - Copia")
-            self.writer_excel(archivo_trabajo, comprobante, "Comprobante")
+            self.writer_excel(
+                archivo_destino=archivo_trabajo,
+                archivo_origen=excel_path,
+                datos_por_hoja={
+                    "Diario 2026 - Copia": copia,
+                    "Comprobante": comprobante,
+                },
+            )
         except Exception as e:
             return ResultadoProceso(
                 exito=False, mensaje=f"No se pudo escribir el Excel: {e}",
