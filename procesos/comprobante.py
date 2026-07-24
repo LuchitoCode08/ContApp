@@ -53,7 +53,23 @@ MESES_ES: dict[int, str] = {
 
 
 def _read_csv_con_fallback(archivo: Path) -> pd.DataFrame:
-    """Lee un CSV desde disco probando utf-8 -> utf-8-sig -> latin-1."""
+    """Lee un CSV desde disco probando utf-8 -> utf-8-sig -> latin-1.
+
+    NOTA IMPORTANTE sobre ``sep="|"``:
+        El CSV real de Bancolombia tiene UNA sola linea por movimiento
+        con 9 campos separados por coma. Algunos campos (descripcion)
+        pueden contener comas, por ejemplo:
+            "TRANSFERENCIA CTA SUC VIRTUAL, PROVEEDOR"
+        Si usaramos ``sep=","`` pandas dividiria esa linea en 2 (o mas)
+        filas, rompiendo la alineacion de columnas.
+
+        El truco: usamos ``sep="|"`` porque el CSV NUNCA contiene pipes.
+        Asi pandas lee toda la linea como UNA sola celda, sin dividir
+        nada. Despues, en ``_copy_data``, hacemos el split por coma
+        manualmente con ``str.split(pat=",", expand=True)``.
+
+        NO cambiar ``sep="|"`` por ``sep=","`` sin entender esto primero.
+    """
     for encoding in ENCODING_FALLBACKS:
         try:
             return pd.read_csv(
@@ -150,7 +166,16 @@ class ProcesoComprobante(ProcesoBase):
 
     @staticmethod
     def _read_csv_bytes(raw: bytes) -> pd.DataFrame:
-        """Lee bytes como CSV con fallback de encoding."""
+        """Lee bytes como CSV con fallback de encoding.
+
+        Tambien usa ``sep="|"`` por la misma razon que
+        ``_read_csv_con_fallback``: el CSV de Bancolombia trae una
+        sola linea por movimiento y algunos campos (descripcion)
+        pueden contener comas. Ver docstring de ``_read_csv_con_fallback``
+        para mas detalle.
+
+        NO cambiar ``sep="|"`` por ``sep=","`` sin entenderlo primero.
+    """
         for encoding in ENCODING_FALLBACKS:
             try:
                 return pd.read_csv(
@@ -186,6 +211,13 @@ class ProcesoComprobante(ProcesoBase):
             empty = pd.DataFrame()
             return empty, empty, empty, empty
 
+        # Aqui llega el split manual por coma. ``copia`` tiene una sola
+        # columna con la linea entera del CSV (ej:
+        # "47789085868,40,1,28022026,,25931.41,8999,ABONO,..,0").
+        # Lo dividimos manualmente en 9 columnas. Esto es seguro porque
+        # sabemos que la linea trae exactamente 9 campos separados por
+        # coma; las comas DENTRO de la descripcion no se tocaron en la
+        # lectura (gracias al ``sep="|"`` de _read_csv_bytes).
         por_cuentas = copia[0].str.split(pat=",", expand=True)
         por_cuentas = por_cuentas.apply(lambda c: c.astype(str).str.strip())
 
