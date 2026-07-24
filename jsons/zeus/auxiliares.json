@@ -1,7 +1,0 @@
-{
-  "auxiliares": [
-    ["^CONSIGNACION", "CON"],
-    ["^TRANSFERENCIA", "TRF"],
-    ["^NOTA CREDITO", "NC"]
-  ]
-}
