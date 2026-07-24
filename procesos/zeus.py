@@ -81,7 +81,23 @@ class ProcesoZeus(ProcesoBase):
     # Depuracion: migracion literal del script original
     # ------------------------------------------------------------------
     def copy_data(self, archivo: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
-        data_frame_copia = pd.read_excel(archivo, dtype=str)
+        # Detectar la hoja que tiene la columna 'Cuenta1'.
+        # El script original tomaba siempre la primera hoja, lo que falla
+        # en algunos Excels donde la primera hoja es auxiliar.
+        xls = pd.ExcelFile(archivo)
+        hoja_objetivo = None
+        for hoja in xls.sheet_names:
+            head = pd.read_excel(xls, sheet_name=hoja, dtype=str, nrows=0)
+            if "Cuenta1" in head.columns:
+                hoja_objetivo = hoja
+                break
+        if hoja_objetivo is None:
+            raise ValueError(
+                f"No se encontro la columna 'Cuenta1' en ninguna hoja "
+                f"del archivo {archivo.name}."
+            )
+        log().info("%s Hoja objetivo: %s", self.LOG_PREFIX, hoja_objetivo)
+        data_frame_copia = pd.read_excel(archivo, sheet_name=hoja_objetivo, dtype=str)
 
         # Pasar auxiliares (Cuenta1) de 8 digitos a 6 digitos.
         for patron, remplazo in self.aux.items():
