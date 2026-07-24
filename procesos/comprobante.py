@@ -323,6 +323,20 @@ class ProcesoComprobante(ProcesoBase):
         return ruta_final
 
     # ------------------------------------------------------------------
+    # Mapeo de cuenta Bancolombia -> NIT universidad
+    # ------------------------------------------------------------------
+    def _codigo_para_foapal(self, cuenta: str) -> str:
+        """Devuelve el NIT de la universidad para una cuenta Bancolombia.
+
+        Usa ``nit_bancolombia.json`` (``self.nit_bancolombia``) que mapea
+        cuenta Bancolombia (10 digitos) -> NIT. Si la cuenta no esta
+        en el mapa, devuelve la cuenta original (fallback seguro).
+        """
+        if not isinstance(cuenta, str):
+            cuenta = str(cuenta).strip()
+        return self.nit_bancolombia.get(cuenta, cuenta)
+
+    # ------------------------------------------------------------------
     # Aplicacion del FOAPAL -> fzrcoco.xlsx
     #
     # Estructura de ``df_conceptos`` (viene de ``_copy_data``):
@@ -371,6 +385,12 @@ class ProcesoComprobante(ProcesoBase):
                 valor = abs(fila.iloc[COL_VALOR])
                 fecha = fila.iloc[COL_FECHA]
 
+                # Reemplazar la cuenta Bancolombia (COL_CUENTA) por el
+                # NIT de la universidad, usando el JSON nit_bancolombia.
+                codigo_universidad = self._codigo_para_foapal(
+                    str(fila.iloc[COL_CUENTA]).strip()
+                )
+
                 try:
                     codigo_contable_num = int(codigo_contable)
                 except ValueError:
@@ -383,12 +403,12 @@ class ProcesoComprobante(ProcesoBase):
                 programa = foapal_info.get("Programa", "999999")
 
                 filas.append([
-                    fila.iloc[0], concepto, valor, fecha,
+                    codigo_universidad, concepto, valor, fecha,
                     fondo, organizacion, codigo_contable_num, programa, dc_principal,
                 ])
                 if codigo_contable == CODIGO_EXCEPCION_FOAPAL:
                     filas.append([
-                        fila.iloc[0], concepto, valor, fecha,
+                        codigo_universidad, concepto, valor, fecha,
                         EXCEPCION_FOAPAL["Fondo"],
                         EXCEPCION_FOAPAL["Organizacion"],
                         EXCEPCION_FOAPAL["Cuenta"],
@@ -397,7 +417,7 @@ class ProcesoComprobante(ProcesoBase):
                     ])
                 else:
                     filas.append([
-                        fila.iloc[0], concepto, valor, fecha,
+                        codigo_universidad, concepto, valor, fecha,
                         fondo, organizacion, codigo_contable_num, programa, dc_contraparte,
                     ])
 
