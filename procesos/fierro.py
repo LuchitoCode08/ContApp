@@ -410,7 +410,10 @@ class ProcesoFierro(ProcesoBase):
         archivos: list[Path],
         modo_prueba: bool = False,
     ) -> ResultadoProceso:
-        log().info("%s Iniciando (modo_prueba=%s)", self.LOG_PREFIX, modo_prueba)
+        log().info(
+            "%s Iniciando (modo_prueba=%s)",
+            self.LOG_PREFIX, modo_prueba,
+        )
         excel_path = archivos[0]
 
         try:
@@ -443,7 +446,11 @@ class ProcesoFierro(ProcesoBase):
                 exito=False, mensaje=f"No se pudo escribir el Excel: {e}",
             )
 
-        log().info("%s Excel procesado: %s", self.LOG_PREFIX, archivo_trabajo.name)
+        sufijo = " [PRUEBA]" if modo_prueba else ""
+        log().info(
+            "%s Excel procesado: %s%s",
+            self.LOG_PREFIX, archivo_trabajo.name, sufijo,
+        )
 
         return ResultadoProceso(
             exito=True,

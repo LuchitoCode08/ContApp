@@ -353,6 +353,7 @@ class ProcesoComprobante(ProcesoBase):
     # ------------------------------------------------------------------
     def _aplicar_foapal(
         self, df_conceptos: pd.DataFrame, carpeta: Path,
+        *, modo_prueba: bool = False,
     ) -> Path | None:
         if df_conceptos.empty:
             log().info("%s No hay datos para aplicar FOAPAL.", self.LOG_PREFIX)
@@ -436,7 +437,11 @@ class ProcesoComprobante(ProcesoBase):
 
             ruta_foapal = carpeta / "fzrcoco.xlsx"
             wb.save(ruta_foapal)
-            log().info("%s FOAPAL generado: %s", self.LOG_PREFIX, ruta_foapal)
+            sufijo = " [PRUEBA]" if modo_prueba else ""
+            log().info(
+                "%s FOAPAL generado: %s%s",
+                self.LOG_PREFIX, ruta_foapal, sufijo,
+            )
             return ruta_foapal
         except Exception as e:
             log().error("%s Error aplicando FOAPAL: %s", self.LOG_PREFIX, e)
@@ -450,7 +455,10 @@ class ProcesoComprobante(ProcesoBase):
         archivos: list[Path],
         modo_prueba: bool = False,
     ) -> ResultadoProceso:
-        log().info("%s Iniciando (modo_prueba=%s)", self.LOG_PREFIX, modo_prueba)
+        log().info(
+            "%s Iniciando (modo_prueba=%s)",
+            self.LOG_PREFIX, modo_prueba,
+        )
         zip_path = archivos[0]
 
         try:
@@ -477,12 +485,13 @@ class ProcesoComprobante(ProcesoBase):
         except Exception as e:
             return ResultadoProceso(exito=False, mensaje=f"No se pudo escribir el Excel: {e}")
 
-        ruta_foapal = self._aplicar_foapal(por_conceptos, carpeta)
+        ruta_foapal = self._aplicar_foapal(por_conceptos, carpeta, modo_prueba=modo_prueba)
 
         archivos_generados: list[Path] = [ruta_excel]
         if ruta_foapal is not None:
             archivos_generados.append(ruta_foapal)
-        log().info("%s Generado: %s", self.LOG_PREFIX, ruta_excel.name)
+        sufijo = " [PRUEBA]" if modo_prueba else ""
+        log().info("%s Generado: %s%s", self.LOG_PREFIX, ruta_excel.name, sufijo)
 
         return ResultadoProceso(
             exito=True,

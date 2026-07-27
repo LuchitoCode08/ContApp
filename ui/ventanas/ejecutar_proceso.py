@@ -361,3 +361,15 @@ class PantallaProcesos(QWidget):
 
     def _ir_a_grid(self) -> None:
         self.stack.setCurrentIndex(0)
+
+    # -- API publica -------------------------------------------------
+
+    def seleccionar_proceso(self, nombre: str) -> None:
+        """Salta directo a la vista de ejecucion con un proceso pre-cargado.
+
+        Pensado para que la Pantalla Inicio pueda navegar aca cuando el
+        usuario hace click en una tarjeta del dashboard.
+        """
+        if nombre not in self._cfg.procesos:
+            return
+        self._ir_a_ejecucion(nombre)

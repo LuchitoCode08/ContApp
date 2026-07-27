@@ -103,20 +103,17 @@ def main() -> int:
     log_path = RAIZ / "data" / "bitacora" / "bitacora.log"
     configurar_bitacora(log_path)
 
-    log().info("=" * 60)
-    log().info("ContApp iniciando (cli=%s)", args.cli)
-
     if args.cli:
         # Modo CLI.
-        log().info("Procesos disponibles:")
-        for nombre in listar_procesos():
-            log().info("  - %s", nombre)
         log().info(
             "Para ejecutar uno: python main.py --cli --proceso <nombre> "
             "--archivo <archivo> [--modo-prueba]"
         )
 
         if args.listar or (not args.proceso and not args.archivo):
+            # Modo solo listado: no dejamos ruido en la bitacora.
+            for nombre in listar_procesos():
+                print(f"  - {nombre}")
             return 0
 
         if not args.proceso:
