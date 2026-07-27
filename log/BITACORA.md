@@ -137,6 +137,41 @@ Solicitado por el usuario: el listado plano de 8 JSONs era poco legible.
 - **Smoke tests con listas -> trees**: actualizar tests E2E es trivial cuando el contrato cambia: el path del archivo se guarda en `Qt.ItemDataRole.UserRole`, asi que solo hay que extraerlo del `QTreeWidgetItem`.
 
 
+## Sesion 2026-07-27 (Fase 4 - Suite pytest)
+
+**Resumen:** Se creo la suite de tests pytest del nucleo (sin UI). **Resultado: 86 tests pasando en ~5 segundos**, organizados en 7 archivos (`test_smoke.py`, `test_archivos.py`, `test_json_manager.py`, `test_bitacora.py`, `test_comprobante_e2e.py`, `test_fierro_e2e.py`, `test_zeus_e2e.py`) + entry point `tests/run_all.py`.
+
+### [x] Completadas (Fase 4)
+
+- [x] **`tests/test_smoke.py` (6 tests)**: imports + `app.config.Config` singleton + registro de procesos (`app.procesos.PROCESOS`) + instanciar cada proceso + `ResultadoProceso` dataclass + compilacion de todos los .py de `app/`, `procesos/`, `utils/`, `ui/`.
+- [x] **`tests/test_archivos.py` (12 tests)**: `timestamp_unico` (formato + sin colisiones en 1000 calls), `carpeta_resultados` crea `YYYY-MM/`, `carpeta_modo_prueba` crea `_prueba_YYYY-MM/`, `copiar_a_carpeta` (basico + duplicado -> sufijo `_1`), `mover_a_carpeta` (borra origen), `listar_archivos` (con/sin filtro extensiones + carpeta inexistente).
+- [x] **`tests/test_json_manager.py` (12 tests)**: `detectar_tipo` para A/B/C/D + vacio -> A, `leer/escribir_json` roundtrip, `escribir_json` con backup, `escribir_json(sin_backup=True)` no crea backup, primer archivo crea backup, preservacion de tildes y caracteres especiales, `indent=2`.
+- [x] **`tests/test_bitacora.py` (23 tests)**: `configurar()` con/sin path, `log()` retorna logger singleton, `leer_registros` parsea formato, vacio -> lista vacia, newest-first (reversed), `limit`, archivo inexistente -> lista vacia, lineas de continuacion, `es_modo_prueba` parametrizado (7 casos), `quitar_marca_prueba` (3 casos), `obtener_ultimo` con/sin filtro por proceso.
+- [x] **`tests/test_comprobante_e2e.py` (10 tests)**: `validar_archivos` (valido / no ZIP / vacio), `ejecutar` modo_prueba genera archivos en carpeta `_prueba_YYYY-MM/`, modo_produccion escribe in-place, genera FOAPAL, extensiones .xlsx, ZIP sin CSVs (falla elegante), ZIP con CSV minimo viable, `LOG_PREFIX == "[Comprobante]"`.
+- [x] **`tests/test_fierro_e2e.py` (11 tests)**: `validar_archivos` (valido / vacio / muchos / extension invalida), modo_prueba copia a `_prueba_YYYY-MM/`, modo_produccion modifica in-place, Excel resultante tiene 3 hojas (`Diario 2026` + `- Copia` + `Comprobante`), filas coinciden, detalles de filas, `LOG_PREFIX == "[Fierro]"`, error elegante si no existe la hoja `Diario 2026`.
+- [x] **`tests/test_zeus_e2e.py` (12 tests)**: `validar_archivos` (valido / vacio / muchos / extension invalida), modo_prueba copia a `_prueba_YYYY-MM/`, modo_produccion modifica in-place, Excel resultante tiene `Exportar` + `Exportar - Copia` + `Depurado`, aplica auxiliares 8 -> 6 digitos (`11902101` -> `119021`), agrega `Valor2/BaseAbs/Tarifa`, detalles de filas, `LOG_PREFIX == "[Zeus]"`, error elegante si no hay columna `Cuenta1`.
+- [x] **`tests/run_all.py`**: entry point `python -m tests.run_all` que invoca `pytest tests/ -v` y muestra `[OK] Todos los tests pasaron.` o `[FAIL] pytest retorno N`.
+
+### Bugs encontrados y corregidos durante la implementacion
+
+- **`utils/bitacora.py` UnboundLocalError**: un `from pathlib import Path` LOCAL dentro del `except` en `_resolver_ruta_bitacora` hacia que Python tratara `Path` como local en toda la funcion. **Fix**: agregar `from pathlib import Path` a los imports globales del modulo y borrar el local.
+- **`obtener_ultimo` sin `ruta_bitacora`**: la firma original era `obtener_ultimo(proceso=None)` y siempre leia el log global. **Fix**: extender firma a `obtener_ultimo(proceso=None, ruta_bitacora=None)` para que los tests puedan usar un log en `tmp_path`.
+- **Fierro/Comprobante con `tmp_path`**: `ProcesoFierro.__init__` resuelve `RAIZ / "jsons" / "fierro"` para leer los JSONs. Para testear en `tmp_path` hay que **copiar los JSONs reales** al `tmp_path/jsons/<proceso>/` antes de patchear `RAIZ` con `monkeypatch.setattr`. **Patron** aplicable a Comprobante (4 JSONs), Fierro (3) y Zeus (1).
+- **Modo_prueba en Fierro/Zeus**: NO agrega sufijo `_prueba` al nombre del archivo. La marca de modo_prueba esta SOLO en la carpeta `_prueba_YYYY-MM/`. (Distinto de Comprobante, que tampoco lo agrega; la convencion del proyecto es la carpeta.)
+
+### Verificacion final
+
+- **`pytest tests/` -> 86 passed in 4.97s** (sin warnings).
+- **`python -m tests.run_all` -> 86 passed in 5.46s** + `[OK] Todos los tests pasaron.`
+- Distribucion: `test_smoke.py` 6 / `test_archivos.py` 12 / `test_json_manager.py` 12 / `test_bitacora.py` 23 / `test_comprobante_e2e.py` 10 / `test_fierro_e2e.py` 11 / `test_zeus_e2e.py` 12.
+
+### Lecciones de la sesion
+
+- **JSONs reales en tmp_path para tests E2E**: copiar con `shutil.copy2(RAIZ/"jsons"/<proceso>/<archivo>.json, tmp_path/"jsons"/<proceso>/<archivo>.json)` permite que `__init__` encuentre los mapeos sin tocar el repo. Patron reusable para los 3 procesos.
+- **Aserciones sobre el filesystem son mas fragiles que sobre DataFrames**: validar `len(df) == 2` es mas estable que `assert n_copia == 2` (que cuenta filas via `iter_rows`). Preferir asserts sobre DataFrames siempre que se pueda.
+- **Sucio > limpio cuando se valida un proceso existente**: NO intentar refactorizar `copy_data` para hacerlo "mas testeable" (romperia la migracion literal del script original). Testear la caja negra con Excels sinteticos y asserts sobre `archivos_salida` + `detalles` + estructura del Excel escrito.
+
+
 ## Sesion 2026-07-24
 
 **Resumen:** Sesion inicial del proyecto. Se monto la estructura base del proyecto desde cero, se migraron los scripts originales al patron `ProcesoBase`, se optimizaron los cuellos de botella, se implemento la UI base y se corrigieron varios bugs.

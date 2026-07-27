@@ -15,19 +15,19 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ui.recursos.tema import color_proceso
+
 
 class TarjetaProceso(QFrame):
-    """Tarjeta clickeable con icono, nombre y descripcion de un proceso."""
+    """Tarjeta clickeable con icono, nombre y descripcion de un proceso.
+
+    Tiene una franja de color arriba segun el proceso:
+    - comprobante: sky
+    - fierro: orange
+    - zeus: purple
+    """
 
     seleccionado = Signal(str)  # nombre del proceso
-
-    COLOR_FONDO = "#FFFFFF"
-    COLOR_FONDO_HOVER = "#E3F2FD"
-    COLOR_FONDO_PRESIONADO = "#BBDEFB"
-    COLOR_BORDE = "#BDBDBD"
-    COLOR_BORDE_HOVER = "#1976D2"
-    COLOR_TEXTO = "#212121"
-    COLOR_TEXTO_SECUNDARIO = "#616161"
 
     def __init__(
         self,
@@ -38,42 +38,49 @@ class TarjetaProceso(QFrame):
     ) -> None:
         super().__init__(parent)
         self.nombre = nombre
-        self.setFrameShape(QFrame.Shape.StyledPanel)
+        self._acento = color_proceso(nombre)
+        self.setObjectName("TarjetaProceso")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setMinimumSize(220, 160)
-        self.setMaximumHeight(200)
+        self.setMinimumSize(220, 170)
+        self.setMaximumHeight(220)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._actualizar_estilo(hover=False, presionado=False)
 
         # Layout.
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(8)
+        layout.setContentsMargins(18, 14, 18, 16)
+        layout.setSpacing(6)
 
         # Icono (emoji grande).
         self._icono_label = QLabel(icono)
         font_icono = QFont()
-        font_icono.setPointSize(32)
+        font_icono.setPointSize(36)
+        font_icono.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
         self._icono_label.setFont(font_icono)
         self._icono_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._icono_label)
 
-        # Nombre del proceso.
-        self._nombre_label = QLabel(nombre)
+        # Nombre del proceso (caps + bold).
+        self._nombre_label = QLabel(nombre.upper())
         font_nombre = QFont()
         font_nombre.setPointSize(13)
         font_nombre.setBold(True)
+        font_nombre.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
         self._nombre_label.setFont(font_nombre)
         self._nombre_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._nombre_label.setStyleSheet(f"color: {self.COLOR_TEXTO};")
+        self._nombre_label.setStyleSheet(
+            "color: #1A1F2C; letter-spacing: 1px;"
+        )
         layout.addWidget(self._nombre_label)
 
         # Descripcion (recortada).
         self._desc_label = QLabel(descripcion)
         self._desc_label.setWordWrap(True)
         self._desc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._desc_label.setStyleSheet(f"color: {self.COLOR_TEXTO_SECUNDARIO};")
-        self._desc_label.setMaximumHeight(50)
+        self._desc_label.setStyleSheet(
+            "color: #5B6473; font-size: 12px; line-height: 1.3;"
+        )
+        self._desc_label.setMaximumHeight(60)
         layout.addWidget(self._desc_label, 1)
 
         # Eventos de mouse.
@@ -82,18 +89,32 @@ class TarjetaProceso(QFrame):
     # -- Estilos -----------------------------------------------------
 
     def _actualizar_estilo(self, hover: bool, presionado: bool) -> None:
+        """Pinta la tarjeta segun el estado y el tema actual."""
+        from ui.recursos.tema import _paleta
+        p = _paleta()
         if presionado:
-            bg = self.COLOR_FONDO_PRESIONADO
-            borde = self.COLOR_BORDE_HOVER
+            bg = p.surface_alt
+            borde = self._acento
+            ancho = 2
         elif hover:
-            bg = self.COLOR_FONDO_HOVER
-            borde = self.COLOR_BORDE_HOVER
+            # En hover usamos un tinte derivado del acento.
+            bg = p.surface_alt
+            borde = self._acento
+            ancho = 2
         else:
-            bg = self.COLOR_FONDO
-            borde = self.COLOR_BORDE
+            bg = p.surface
+            borde = p.border
+            ancho = 1
+        # Borde superior coloreado (identidad del proceso).
         self.setStyleSheet(
-            f"TarjetaProceso {{ background-color: {bg}; "
-            f"border: 2px solid {borde}; border-radius: 8px; }}"
+            f"""
+            TarjetaProceso {{
+                background-color: {bg};
+                border: {ancho}px solid {borde};
+                border-top: 4px solid {self._acento};
+                border-radius: 10px;
+            }}
+            """
         )
 
     # -- Eventos de mouse --------------------------------------------
@@ -112,3 +133,13 @@ class TarjetaProceso(QFrame):
         if event.button() == Qt.MouseButton.LeftButton:
             self._actualizar_estilo(hover=self.underMouse(), presionado=False)
             self.seleccionado.emit(self.nombre)
+
+    def _aplicar_tema(self, paleta) -> None:
+        """Reaplica el estilo al cambiar de tema."""
+        self._actualizar_estilo(hover=self.underMouse(), presionado=False)
+        self._nombre_label.setStyleSheet(
+            f"color: {paleta.fg}; letter-spacing: 1px;"
+        )
+        self._desc_label.setStyleSheet(
+            f"color: {paleta.fg_muted}; font-size: 12px; line-height: 1.3;"
+        )

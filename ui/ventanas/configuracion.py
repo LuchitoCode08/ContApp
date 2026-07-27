@@ -43,12 +43,26 @@ from utils.bitacora import (
 
 
 # Mapeo de nivel a color de fondo (para resaltar).
-COLOR_NIVEL = {
+# Los colores "INFO" y "DEBUG" dependen del tema actual y se computan en
+# ``_color_nivel()`` para que la tabla se vea bien tanto en claro como en
+# oscuro.
+COLOR_NIVEL_BASE = {
     "ERROR": "#FDAAB3",    # rojo suave
     "WARNING": "#F3C47E",  # naranja suave
-    "INFO": "#FFFFFF",     # blanco
-    "DEBUG": "#ECEFF1",    # gris
+    "INFO": None,          # se calcula en _color_nivel()
+    "DEBUG": None,         # se calcula en _color_nivel()
 }
+
+
+def _color_nivel(nivel: str) -> str:
+    """Devuelve el color de fondo para una fila segun nivel y tema actual."""
+    from ui.recursos.tema import _paleta
+    p = _paleta()
+    if nivel == "INFO":
+        return p.surface
+    if nivel == "DEBUG":
+        return p.surface_alt
+    return COLOR_NIVEL_BASE.get(nivel, p.surface)
 
 PROCESOS = ["Todos", "Comprobante", "Fierro", "Zeus"]
 NIVELES = ["Todos", "INFO", "WARNING", "ERROR", "DEBUG"]
@@ -75,21 +89,20 @@ class PantallaConfiguracion(QWidget):
 
     def _construir_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(10)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(14)
 
-        titulo = QLabel("Bitacora de actividad")
-        titulo.setStyleSheet("font-size: 16px; font-weight: bold;")
+        titulo = QLabel("📋  Bitácora de actividad")
+        titulo.setStyleSheet(
+            "font-size: 22px; font-weight: 700; padding-bottom: 4px;"
+        )
         layout.addWidget(titulo)
 
         # --- Filtros ------------------------------------------------
-        filtros = QFrame()
-        filtros.setFrameShape(QFrame.Shape.StyledPanel)
-        filtros.setStyleSheet(
-            "QFrame { background-color: #FAFAFA; border: 1px solid #E0E0E0;"
-            " border-radius: 4px; }"
-        )
-        fl = QHBoxLayout(filtros)
+        self._filtros = QFrame()
+        self._filtros.setObjectName("filtros_frame")
+        self._filtros.setFrameShape(QFrame.Shape.StyledPanel)
+        fl = QHBoxLayout(self._filtros)
         fl.setContentsMargins(8, 8, 8, 8)
 
         fl.addWidget(QLabel("Desde:"))
@@ -148,7 +161,8 @@ class PantallaConfiguracion(QWidget):
         self.btn_refrescar.clicked.connect(self.refrescar)
         fl.addWidget(self.btn_refrescar)
 
-        layout.addWidget(filtros)
+        layout.addWidget(self._filtros)
+        self._aplicar_tema(self._tema_actual())
 
         # --- Tabla --------------------------------------------------
         self._tabla = QTableWidget()
@@ -173,27 +187,53 @@ class PantallaConfiguracion(QWidget):
 
         # --- Footer -------------------------------------------------
         footer = QHBoxLayout()
-        self._lbl_total = QLabel("0 registros")
-        self._lbl_total.setStyleSheet("color: #616161;")
+        self._lbl_total = QLabel("  0 registros")
         footer.addWidget(self._lbl_total)
         footer.addStretch()
 
-        self.btn_exportar_excel = QPushButton("Exportar a Excel")
+        self.btn_exportar_excel = QPushButton("📊  Exportar Excel")
         self.btn_exportar_excel.clicked.connect(self._exportar_excel)
         footer.addWidget(self.btn_exportar_excel)
 
-        self.btn_exportar_csv = QPushButton("Exportar a CSV")
+        self.btn_exportar_csv = QPushButton("📄  Exportar CSV")
         self.btn_exportar_csv.clicked.connect(self._exportar_csv)
         footer.addWidget(self.btn_exportar_csv)
 
-        self.btn_limpiar = QPushButton("Limpiar registros antiguos")
-        self.btn_limpiar.setStyleSheet(
-            "QPushButton { color: #C62828; }"
-        )
+        self.btn_limpiar = QPushButton("🗑  Limpiar antiguos")
+        self.btn_limpiar.setObjectName("danger")
         self.btn_limpiar.clicked.connect(self._limpiar_antiguos)
         footer.addWidget(self.btn_limpiar)
 
         layout.addLayout(footer)
+
+        self._aplicar_tema(self._tema_actual())
+
+    def _tema_actual(self):
+        from ui.recursos.tema import _paleta
+        return _paleta()
+
+    def _aplicar_tema(self, paleta) -> None:
+        """Reaplica estilos al cambiar de tema."""
+        if hasattr(self, "_filtros") and self._filtros is not None:
+            self._filtros.setStyleSheet(
+                f"QFrame {{ background-color: {paleta.surface_alt};"
+                f" border: 1px solid {paleta.border};"
+                " border-radius: 4px; }"
+            )
+        if hasattr(self, "_lbl_total") and self._lbl_total is not None:
+            self._lbl_total.setStyleSheet(
+                f"color: {paleta.fg_muted}; font-size: 12px;"
+            )
+        if hasattr(self, "btn_limpiar") and self.btn_limpiar is not None:
+            self.btn_limpiar.setStyleSheet(
+                f"QPushButton {{ color: {paleta.danger};"
+                f" border: 1px solid {paleta.danger}; }}"
+                f"QPushButton:hover {{ background-color: {paleta.surface_alt};"
+                " border-color: #B91C1C; }"
+            )
+        # Forzar el repintado de la tabla con los nuevos colores de fila.
+        if hasattr(self, "_registros") and self._registros:
+            self._aplicar_filtros()
 
         # Senales automaticas para algunos filtros.
         self._fecha_desde.dateChanged.connect(
@@ -267,6 +307,8 @@ class PantallaConfiguracion(QWidget):
         self._lbl_total.setText(f"{len(filtrados)} registro(s)")
 
     def _llenar_tabla(self, registros: list[dict]) -> None:
+        from ui.recursos.tema import _paleta
+        p = _paleta()
         self._tabla.setRowCount(len(registros))
         for i, r in enumerate(registros):
             # Detectamos modo prueba por la marca "[PRUEBA]" en el mensaje.
@@ -285,9 +327,11 @@ class PantallaConfiguracion(QWidget):
             ]
             for col, item in enumerate(items):
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                # Forzar foreground explicito para que en oscuro no quede blanco.
+                item.setForeground(QColor(p.fg))
                 self._tabla.setItem(i, col, item)
-            # Color por nivel.
-            bg = COLOR_NIVEL.get(r["nivel"], "#FFFFFF")
+            # Color de fondo por nivel (dependiente del tema).
+            bg = _color_nivel(r["nivel"])
             for item in items:
                 item.setBackground(QColor(bg))
             # Highlight de la columna Modo (PRUEBA en naranja suave).

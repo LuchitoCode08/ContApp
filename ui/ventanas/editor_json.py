@@ -148,13 +148,11 @@ class PantallaDiccionarios(QWidget):
 
         header = QHBoxLayout()
         self._lbl_titulo = QLabel("Selecciona un JSON de la izquierda")
-        self._lbl_titulo.setStyleSheet("font-size: 14px; font-weight: bold;")
         header.addWidget(self._lbl_titulo)
         header.addStretch()
         der_layout.addLayout(header)
 
         self._lbl_ruta = QLabel("")
-        self._lbl_ruta.setStyleSheet("color: #888; font-size: 11px;")
         der_layout.addWidget(self._lbl_ruta)
 
         # Contenedor del editor (cambia segun tipo).
@@ -165,19 +163,22 @@ class PantallaDiccionarios(QWidget):
         der_layout.addWidget(cont, 1)
 
         # Footer con estado + botones.
+        from ui.recursos.tema import _paleta as _p
+        _p_inicial = _p()
         footer = QFrame()
-        footer.setFrameShape(QFrame.Shape.StyledPanel)
+        footer.setObjectName("editor_footer")
         footer.setStyleSheet(
-            "QFrame { background-color: #FAFAFA; border: 1px solid #E0E0E0;"
-            " border-radius: 4px; padding: 8px; }"
+            f"QFrame {{ background-color: {_p_inicial.surface};"
+            f" border-top: 1px solid {_p_inicial.border};"
+            " border-radius: 0; padding: 4px; }"
         )
         flayout = QHBoxLayout(footer)
-        self._lbl_cambios = QLabel("0 cambios sin guardar")
-        self._lbl_cambios.setStyleSheet("font-weight: bold;")
+        flayout.setContentsMargins(8, 12, 8, 12)
+        self._lbl_cambios = QLabel("● 0 cambios sin guardar")
         flayout.addWidget(self._lbl_cambios)
         flayout.addStretch()
 
-        self.btn_agregar = QPushButton("+ Agregar")
+        self.btn_agregar = QPushButton("＋  Agregar")
         self.btn_agregar.clicked.connect(self._on_agregar)
         self.btn_agregar.setEnabled(False)
         flayout.addWidget(self.btn_agregar)
@@ -187,22 +188,152 @@ class PantallaDiccionarios(QWidget):
         self.btn_cancelar.setEnabled(False)
         flayout.addWidget(self.btn_cancelar)
 
-        self.btn_guardar = QPushButton("Guardar cambios")
-        self.btn_guardar.setStyleSheet(
-            "QPushButton { background-color: #2E7D32; color: white;"
-            " padding: 6px 14px; font-weight: bold; }"
-        )
+        self.btn_guardar = QPushButton("💾  Guardar cambios")
+        self.btn_guardar.setObjectName("primary")
         self.btn_guardar.clicked.connect(self._on_guardar)
         self.btn_guardar.setEnabled(False)
         flayout.addWidget(self.btn_guardar)
 
         der_layout.addWidget(footer)
+        self._footer_editor = footer
+        self._aplicar_tema(_p_inicial)
 
         splitter.addWidget(panel_der)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
         splitter.setSizes([260, 800])
         layout.addWidget(splitter)
+
+    def _aplicar_tema(self, paleta) -> None:
+        """Reaplica estilos al cambiar de tema."""
+        if hasattr(self, "_footer_editor") and self._footer_editor is not None:
+            self._footer_editor.setStyleSheet(
+                f"QFrame {{ background-color: {paleta.surface};"
+                f" border-top: 1px solid {paleta.border};"
+                " border-radius: 0; padding: 4px; }"
+            )
+        if hasattr(self, "_lbl_cambios") and self._lbl_cambios is not None:
+            self._lbl_cambios.setStyleSheet(
+                f"font-weight: 600; color: {paleta.fg_muted}; font-size: 12px;"
+            )
+        if hasattr(self, "_lbl_titulo") and self._lbl_titulo is not None:
+            self._lbl_titulo.setStyleSheet(
+                "font-size: 16px; font-weight: 700;"
+            )
+        if hasattr(self, "_lbl_ruta") and self._lbl_ruta is not None:
+            self._lbl_ruta.setStyleSheet(
+                f"color: {paleta.fg_muted}; font-size: 11px;"
+                " font-family: 'Cascadia Mono', 'Consolas', monospace;"
+            )
+        # Reaplicar colores del tree (secciones y items).
+        if hasattr(self, "_arbol") and self._arbol is not None:
+            self._arbol.setStyleSheet(
+                f"QTreeWidget {{ background-color: {paleta.surface};"
+                f" alternate-background-color: {paleta.surface_alt};"
+                f" color: {paleta.fg};"
+                f" gridline-color: {paleta.border};"
+                f" border: 1px solid {paleta.border};"
+                f" border-radius: {10}px; }}"
+            )
+            from PySide6.QtGui import QBrush, QColor
+            sec_bg = QColor(paleta.surface_alt)
+            sec_fg = QColor(paleta.fg)
+            item_fg = QColor(paleta.fg)
+            item_sel_bg = QColor(paleta.primary)
+            item_sel_fg = QColor(paleta.on_primary)
+            for i in range(self._arbol.topLevelItemCount()):
+                sec = self._arbol.topLevelItem(i)
+                sec.setBackground(0, sec_bg)
+                sec.setForeground(0, sec_fg)
+                for j in range(sec.childCount()):
+                    item = sec.child(j)
+                    item.setForeground(0, item_fg)
+                    # La paleta de seleccion se hereda del QSS global;
+                    # pero algunos items pierden el highlight asi que lo forzamos.
+                    item.setBackground(0, QBrush(QColor(0, 0, 0, 0)))
+        # Reaplicar el editor activo (tabla o tree de la derecha).
+        if hasattr(self, "_editor_widget") and self._editor_widget is not None:
+            fn = getattr(self._editor_widget, "_aplicar_tema", None)
+            if callable(fn):
+                try:
+                    fn(paleta)
+                except Exception:
+                    pass
+            # Tambien tenemos que repintar los items con _estilo_celda para
+            # que el foreground quede del color del tema.
+            self._repintar_editor_activo()
+
+    def _repintar_editor_activo(self) -> None:
+        """Recorre los items del editor actual y les aplica el estilo del tema.
+
+        Necesario porque _estilo_celda setea colores hardcoded que
+        necesitamos respetar al cambiar de tema.
+        """
+        ed = self._editor_widget
+        if ed is None:
+            return
+        # Editor Tipo A / Tipo D: tabla.
+        tabla = getattr(ed, "tabla", None)
+        if tabla is not None:
+            self._repintar_tabla(tabla)
+            return
+        # Editor Tipo B / Tipo C: arbol.
+        arbol = getattr(ed, "_arbol", None)
+        if arbol is not None:
+            self._repintar_arbol(arbol)
+
+    def _repintar_tabla(self, tabla) -> None:
+        """Repinta celdas de una tabla con los colores del tema."""
+        from PySide6.QtGui import QColor
+        from ui.recursos.tema import _paleta
+        p = _paleta()
+        fg = QColor(p.fg)
+        bg = QColor(p.surface)
+        bg_modif = QColor(
+            "#6B5A1F" if p.bg.startswith("#0") or p.bg.startswith("#1")
+            else "#FFF8E1"
+        )
+        for i in range(tabla.rowCount()):
+            for c in range(tabla.columnCount()):
+                item = tabla.item(i, c)
+                if item is None:
+                    continue
+                item.setForeground(fg)
+                # Mantener el fondo de "modificado" si lo tiene, sino usar surface.
+                current_bg = item.background().color().name().lower()
+                if current_bg in ("#fff8e1", "#6b5a1f"):
+                    item.setBackground(bg_modif)
+                else:
+                    item.setBackground(bg)
+
+    def _repintar_arbol(self, arbol) -> None:
+        """Repinta items de un arbol con los colores del tema."""
+        from PySide6.QtGui import QColor
+        from ui.recursos.tema import _paleta
+        p = _paleta()
+        fg = QColor(p.fg)
+        sec_bg = QColor(p.surface_alt)
+        bg_modif = QColor(
+            "#6B5A1F" if p.bg.startswith("#0") or p.bg.startswith("#1")
+            else "#FFF8E1"
+        )
+        for i in range(arbol.topLevelItemCount()):
+            sec = arbol.topLevelItem(i)
+            sec.setForeground(0, fg)
+            sec.setBackground(0, sec_bg)
+            for j in range(sec.childCount()):
+                child = sec.child(j)
+                for c in range(child.columnCount()):
+                    child.setForeground(c, fg)
+                    current_bg = child.background(c).color().name().lower()
+                    if current_bg in ("#fff8e1", "#6b5a1f"):
+                        child.setBackground(c, bg_modif)
+                    else:
+                        child.setBackground(c, QColor(0, 0, 0, 0))
+
+    def _tema_actual(self):
+        from ui.recursos.tema import _paleta
+        return _paleta()
 
     def _cargar_lista_jsons(self) -> None:
         """Descubre todos los JSONs bajo JSONS_DIR y los agrupa por proceso."""
@@ -228,8 +359,10 @@ class PantallaDiccionarios(QWidget):
             seccion = QTreeWidgetItem([_nombre_proceso(proceso_codigo)])
             font = QFont()
             font.setBold(True)
+            font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
             seccion.setFont(0, font)
-            seccion.setBackground(0, QColor("#E3F2FD"))
+            seccion.setBackground(0, QColor("#F2F4F8"))
+            seccion.setForeground(0, QColor("#1A1F2C"))
             seccion.setFlags(seccion.flags() & ~Qt.ItemFlag.ItemIsSelectable)
             self._arbol.addTopLevelItem(seccion)
             for ruta, nombre_legible in archivos:
@@ -462,14 +595,23 @@ def _contar_diferencias(a: Any, b: Any) -> int:
 def _estilo_celda(item: QTableWidgetItem | None, modificado: bool, nuevo: bool) -> None:
     if item is None:
         return
+    # Tokens del tema (leemos del tema actual para que respete el cambio
+    # de claro/oscuro).
+    from ui.recursos.tema import _paleta
+    p = _paleta()
+    item.setForeground(QColor(p.fg))
     if nuevo:
-        item.setBackground(QColor(COLOR_FONDO_NUEVO))
+        # Verde suave adaptado al tema.
+        bg = "#2D5A3E" if p.bg.startswith("#0") or p.bg.startswith("#1") else COLOR_FONDO_NUEVO
+        item.setBackground(QColor(bg))
         item.setToolTip("Nueva entrada (aun no guardada)")
     elif modificado:
-        item.setBackground(QColor(COLOR_FONDO_MODIF))
+        # Amarillo suave adaptado al tema.
+        bg = "#6B5A1F" if p.bg.startswith("#0") or p.bg.startswith("#1") else COLOR_FONDO_MODIF
+        item.setBackground(QColor(bg))
         item.setToolTip("Valor modificado (aun no guardado)")
     else:
-        item.setBackground(QColor("white"))
+        item.setBackground(QColor(p.surface))
         item.setToolTip("")
 
 
@@ -520,6 +662,25 @@ class EditorTipoA(QWidget):
             _estilo_celda(item_k, False, False)
             _estilo_celda(item_v, False, False)
         self.tabla.blockSignals(False)
+
+    def _aplicar_tema(self, paleta) -> None:
+        """Reaplica el estilo de la tabla al cambiar de tema."""
+        from PySide6.QtGui import QColor
+        self.tabla.setStyleSheet(
+            f"QTableWidget {{ background-color: {paleta.surface};"
+            f" alternate-background-color: {paleta.surface_alt};"
+            f" gridline-color: {paleta.border};"
+            f" color: {paleta.fg};"
+            f" border: 1px solid {paleta.border};"
+            f" border-radius: 10px; }}"
+        )
+        # Repintar las celdas existentes.
+        for i in range(self.tabla.rowCount()):
+            for c in range(self.tabla.columnCount()):
+                item = self.tabla.item(i, c)
+                if item is not None:
+                    item.setForeground(QColor(paleta.fg))
+                    item.setBackground(QColor(paleta.surface))
 
     def _agregar_boton_eliminar(self, fila: int, clave: str) -> None:
         btn = QToolButton()
@@ -662,6 +823,24 @@ class EditorTipoD(QWidget):
             _estilo_celda(item_b, False, False)
         self.tabla.blockSignals(False)
 
+    def _aplicar_tema(self, paleta) -> None:
+        """Reaplica el estilo de la tabla al cambiar de tema."""
+        from PySide6.QtGui import QColor
+        self.tabla.setStyleSheet(
+            f"QTableWidget {{ background-color: {paleta.surface};"
+            f" alternate-background-color: {paleta.surface_alt};"
+            f" gridline-color: {paleta.border};"
+            f" color: {paleta.fg};"
+            f" border: 1px solid {paleta.border};"
+            f" border-radius: 10px; }}"
+        )
+        for i in range(self.tabla.rowCount()):
+            for c in range(self.tabla.columnCount()):
+                item = self.tabla.item(i, c)
+                if item is not None:
+                    item.setForeground(QColor(paleta.fg))
+                    item.setBackground(QColor(paleta.surface))
+
     def _agregar_boton_eliminar(self, fila: int) -> None:
         btn = QToolButton()
         btn.setText("🗑")
@@ -762,10 +941,16 @@ class EditorTipoB(QWidget):
     def _cargar_arbol(self) -> None:
         self._arbol.blockSignals(True)
         self._arbol.clear()
+        from ui.recursos.tema import _paleta
+        p = _paleta()
+        sec_bg_color = p.surface_alt
+        fg_color = QColor(p.fg)
+        sec_bg = QColor(sec_bg_color)
         for sec, contenido in self.datos.items():
             sec_item = QTreeWidgetItem([sec])
             sec_item.setData(0, Qt.ItemDataRole.UserRole, ("seccion", sec))
-            sec_item.setBackground(0, QColor("#E3F2FD"))
+            sec_item.setBackground(0, sec_bg)
+            sec_item.setForeground(0, fg_color)
             self._arbol.addTopLevelItem(sec_item)
             if isinstance(contenido, dict):
                 for k, v in contenido.items():
@@ -775,10 +960,36 @@ class EditorTipoB(QWidget):
                     child = QTreeWidgetItem(fields)
                     child.setFlags(child.flags() | Qt.ItemFlag.ItemIsEditable)
                     child.setData(0, Qt.ItemDataRole.UserRole, ("item", sec, k))
-                    # Marcamos con fondo los datos originales.
+                    # Forzar foreground del tema en cada celda.
+                    for c in range(child.columnCount()):
+                        child.setForeground(c, fg_color)
                     sec_item.addChild(child)
             sec_item.setExpanded(True)
         self._arbol.blockSignals(False)
+
+    def _aplicar_tema(self, paleta) -> None:
+        """Reaplica el estilo del tree al cambiar de tema."""
+        from ui.recursos.tema import _paleta
+        p = _paleta()
+        self._arbol.setStyleSheet(
+            f"QTreeWidget {{ background-color: {paleta.surface};"
+            f" alternate-background-color: {paleta.surface_alt};"
+            f" color: {paleta.fg};"
+            f" gridline-color: {paleta.border};"
+            f" border: 1px solid {paleta.border};"
+            f" border-radius: 10px; }}"
+        )
+        fg_color = QColor(paleta.fg)
+        sec_bg = QColor(paleta.surface_alt)
+        for i in range(self._arbol.topLevelItemCount()):
+            sec = self._arbol.topLevelItem(i)
+            sec.setBackground(0, sec_bg)
+            sec.setForeground(0, fg_color)
+            for j in range(sec.childCount()):
+                child = sec.child(j)
+                for c in range(child.columnCount()):
+                    child.setForeground(c, fg_color)
+                    child.setBackground(c, QColor(0, 0, 0, 0))
 
     def _on_item_changed(self, item: QTreeWidgetItem, col: int) -> None:
         if col == 0:
@@ -792,7 +1003,12 @@ class EditorTipoB(QWidget):
             return
         campo = self._campos[col - 1]
         self.datos[sec][k][campo] = item.text(col)
-        item.setBackground(col, QColor(COLOR_FONDO_MODIF))
+        # Fondo adaptado al tema.
+        from ui.recursos.tema import _paleta
+        p = _paleta()
+        bg_modif = "#6B5A1F" if p.bg.startswith("#0") or p.bg.startswith("#1") else COLOR_FONDO_MODIF
+        item.setBackground(col, QColor(bg_modif))
+        item.setForeground(col, QColor(p.fg))
         self._on_change(self.datos)
 
     def agregar(self) -> None:
@@ -881,9 +1097,14 @@ class EditorTipoC(QWidget):
     def _cargar_arbol(self) -> None:
         self._arbol.blockSignals(True)
         self._arbol.clear()
+        from ui.recursos.tema import _paleta
+        p = _paleta()
+        fg_color = QColor(p.fg)
+        sec_bg = QColor(p.surface_alt)
         for sec, contenido in self.datos.items():
             sec_item = QTreeWidgetItem([sec])
-            sec_item.setBackground(0, QColor("#E3F2FD"))
+            sec_item.setBackground(0, sec_bg)
+            sec_item.setForeground(0, fg_color)
             sec_item.setData(0, Qt.ItemDataRole.UserRole, ("seccion", sec))
             self._arbol.addTopLevelItem(sec_item)
             if isinstance(contenido, dict):
@@ -895,9 +1116,34 @@ class EditorTipoC(QWidget):
                     child = QTreeWidgetItem([k, valor_str])
                     child.setFlags(child.flags() | Qt.ItemFlag.ItemIsEditable)
                     child.setData(0, Qt.ItemDataRole.UserRole, ("item", sec, k))
+                    # Forzar foreground del tema en cada celda.
+                    for c in range(child.columnCount()):
+                        child.setForeground(c, fg_color)
                     sec_item.addChild(child)
             sec_item.setExpanded(True)
         self._arbol.blockSignals(False)
+
+    def _aplicar_tema(self, paleta) -> None:
+        """Reaplica el estilo del tree al cambiar de tema."""
+        self._arbol.setStyleSheet(
+            f"QTreeWidget {{ background-color: {paleta.surface};"
+            f" alternate-background-color: {paleta.surface_alt};"
+            f" color: {paleta.fg};"
+            f" gridline-color: {paleta.border};"
+            f" border: 1px solid {paleta.border};"
+            f" border-radius: 10px; }}"
+        )
+        fg_color = QColor(paleta.fg)
+        sec_bg = QColor(paleta.surface_alt)
+        for i in range(self._arbol.topLevelItemCount()):
+            sec = self._arbol.topLevelItem(i)
+            sec.setBackground(0, sec_bg)
+            sec.setForeground(0, fg_color)
+            for j in range(sec.childCount()):
+                child = sec.child(j)
+                for c in range(child.columnCount()):
+                    child.setForeground(c, fg_color)
+                    child.setBackground(c, QColor(0, 0, 0, 0))
 
     def _on_item_changed(self, item: QTreeWidgetItem, col: int) -> None:
         info = item.data(0, Qt.ItemDataRole.UserRole)
@@ -912,7 +1158,12 @@ class EditorTipoC(QWidget):
             self.datos[sec][k] = [s.strip() for s in texto.split("|")]
         else:
             self.datos[sec][k] = texto.strip()
-        item.setBackground(1, QColor(COLOR_FONDO_MODIF))
+        # Fondo adaptado al tema.
+        from ui.recursos.tema import _paleta
+        p = _paleta()
+        bg_modif = "#6B5A1F" if p.bg.startswith("#0") or p.bg.startswith("#1") else COLOR_FONDO_MODIF
+        item.setBackground(1, QColor(bg_modif))
+        item.setForeground(1, QColor(p.fg))
         self._on_change(self.datos)
 
     def agregar(self) -> None:

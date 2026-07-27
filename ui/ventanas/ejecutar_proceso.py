@@ -87,48 +87,58 @@ class VistaEjecucion(QWidget):
 
     def _construir_ui(self) -> None:
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(14)
 
         # --- Header con boton "Volver" + nombre del proceso ---------
-        header = QHBoxLayout()
-        self.btn_volver = QPushButton("← Cambiar proceso")
+        self.btn_volver = QPushButton("←  Procesos")
+        self.btn_volver.setObjectName("ghost")
+        self.btn_volver.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_volver.clicked.connect(self.proceso_cambiado.emit)
-        header.addWidget(self.btn_volver)
+        layout.addWidget(self.btn_volver)
+
+        titulo_row = QHBoxLayout()
+        self._icono_label = QLabel("▶")
+        self._icono_label.setStyleSheet(
+            "font-size: 32px; background: transparent;"
+        )
+        titulo_row.addWidget(self._icono_label)
         self._titulo = QLabel("")
-        self._titulo.setStyleSheet("font-size: 14px; font-weight: bold;")
-        header.addWidget(self._titulo)
-        header.addStretch()
-        layout.addLayout(header)
+        self._titulo.setStyleSheet(
+            "font-size: 22px; font-weight: 700; padding-left: 8px;"
+        )
+        titulo_row.addWidget(self._titulo)
+        titulo_row.addStretch()
+        layout.addLayout(titulo_row)
 
         # Descripcion.
         self._desc = QLabel("")
         self._desc.setWordWrap(True)
-        self._desc.setStyleSheet("color: #555; padding: 4px;")
         layout.addWidget(self._desc)
 
         # --- DropZone -------------------------------------------------
         self.drop_zone = DropZone(
-            mensaje="Arrastra el archivo aqui o haz clic en Examinar",
+            mensaje="Arrastra el archivo aquí o haz clic en Examinar",
         )
         self.drop_zone.archivos_seleccionados.connect(self._agregar_archivos)
         layout.addWidget(self.drop_zone)
 
         # --- Lista de archivos ---------------------------------------
-        layout.addWidget(QLabel("Archivos cargados:"))
+        self._lbl_archivos = QLabel("ARCHIVOS CARGADOS")
+        layout.addWidget(self._lbl_archivos)
         self.lista = QListWidget()
         self.lista.setMaximumHeight(120)
         layout.addWidget(self.lista)
 
         # --- Botones ------------------------------------------------
         btn_row = QHBoxLayout()
-        self.btn_quitar = QPushButton("Quitar ultimo")
+        self.btn_quitar = QPushButton("Quitar último")
         self.btn_quitar.clicked.connect(self._quitar_ultimo)
         self.btn_limpiar = QPushButton("Limpiar")
         self.btn_limpiar.clicked.connect(self._limpiar_archivos)
-        self.btn_ejecutar = QPushButton("Ejecutar")
-        self.btn_ejecutar.setStyleSheet(
-            "QPushButton { background-color: #1976D2; color: white; "
-            "padding: 8px 16px; font-weight: bold; }"
-        )
+        self.btn_ejecutar = QPushButton("▶  Ejecutar proceso")
+        self.btn_ejecutar.setObjectName("primary")
+        self.btn_ejecutar.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_ejecutar.clicked.connect(self._ejecutar)
         btn_row.addWidget(self.btn_quitar)
         btn_row.addWidget(self.btn_limpiar)
@@ -142,21 +152,61 @@ class VistaEjecucion(QWidget):
         self.progress.hide()
         layout.addWidget(self.progress)
         self.estado = QLabel("")
-        self.estado.setStyleSheet("color: #555;")
         layout.addWidget(self.estado)
 
         # Separador.
-        sep = QFrame()
-        sep.setFrameShape(QFrame.Shape.HLine)
-        sep.setFrameShadow(QFrame.Shadow.Sunken)
-        layout.addWidget(sep)
+        self.sep = QFrame()
+        self.sep.setFrameShape(QFrame.Shape.HLine)
+        layout.addWidget(self.sep)
 
         # --- Tabla de resultados -------------------------------------
-        layout.addWidget(QLabel("Archivos generados:"))
+        self._lbl_result = QLabel("ARCHIVOS GENERADOS")
+        layout.addWidget(self._lbl_result)
         self.resultados = TablaResultados()
         layout.addWidget(self.resultados, 1)
 
         self._actualizar_estado()
+        self._aplicar_tema(self._tema_actual())  # aplica colores iniciales
+
+    def _tema_actual(self):
+        from ui.recursos.tema import _paleta
+        return _paleta()
+
+    def _aplicar_tema(self, paleta) -> None:
+        """Reaplica estilos al cambiar de tema."""
+        self._desc.setStyleSheet(
+            f"color: {paleta.fg_muted}; font-size: 13px; line-height: 1.4;"
+        )
+        self._lbl_archivos.setStyleSheet(
+            f"color: {paleta.fg_muted}; font-size: 11px; font-weight: 700;"
+            " letter-spacing: 1.5px; margin-top: 4px;"
+        )
+        self.lista.setStyleSheet(
+            f"QListWidget {{ background-color: {paleta.surface};"
+            f" border: 1px solid {paleta.border}; border-radius: 8px; }}"
+        )
+        self.estado.setStyleSheet(
+            f"color: {paleta.fg_muted}; font-size: 12px;"
+        )
+        self.sep.setStyleSheet(
+            f"color: {paleta.border}; background: {paleta.border};"
+        )
+        self._lbl_result.setStyleSheet(
+            f"color: {paleta.fg_muted}; font-size: 11px; font-weight: 700;"
+            " letter-spacing: 1.5px;"
+        )
+        # Si hay un proceso configurado, reaplicar el acento del titulo.
+        if self._nombre_proceso:
+            from ui.recursos.tema import color_proceso
+            self._titulo.setStyleSheet(
+                f"font-size: 22px; font-weight: 700; padding-left: 8px;"
+                f" color: {color_proceso(self._nombre_proceso)};"
+            )
+        else:
+            self._titulo.setStyleSheet(
+                f"font-size: 22px; font-weight: 700; padding-left: 8px;"
+                f" color: {paleta.fg};"
+            )
 
     # -- API publica -------------------------------------------------
 
@@ -166,14 +216,15 @@ class VistaEjecucion(QWidget):
         cls = self._cfg.procesos[nombre]
         instancia = cls()
         icono = ICONOS.get(nombre, "▶")
-        self._titulo.setText(f"{icono} {nombre}")
-        self._desc.setText(
-            f"<b>{nombre}</b>: {instancia.descripcion}"
-        )
+        self._icono_label.setText(icono)
+        self._titulo.setText(nombre.upper())
+        self._desc.setText(instancia.descripcion)
         self.drop_zone.set_extensiones_aceptadas(
             instancia.extensiones_entrada
         )
         self._limpiar_archivos()
+        # Reaplicar tema con el nuevo proceso (para acento).
+        self._aplicar_tema(self._tema_actual())
 
     # -- Manejo de archivos -----------------------------------------
 
@@ -283,27 +334,29 @@ class VistaGridProcesos(QWidget):
 
     def _construir_ui(self) -> None:
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(28, 24, 28, 24)
+        layout.setSpacing(16)
 
-        titulo = QLabel("¿Que proceso queres ejecutar?")
-        titulo.setStyleSheet("font-size: 16px; font-weight: bold;")
-        layout.addWidget(titulo)
-
-        sub = QLabel(
-            "Elegi una opcion para ver que tipo de archivo necesita."
+        self._titulo = QLabel("¿Qué proceso querés ejecutar?")
+        self._titulo.setStyleSheet(
+            "font-size: 22px; font-weight: 700; padding-bottom: 4px;"
         )
-        sub.setStyleSheet("color: #555;")
-        layout.addWidget(sub)
+        layout.addWidget(self._titulo)
 
-        layout.addSpacing(12)
+        self._sub = QLabel(
+            "Elegí una opción para ver qué tipo de archivo necesita."
+        )
+        self._sub.setWordWrap(True)
+        layout.addWidget(self._sub)
 
         # Grid de tarjetas (2 columnas).
         grid_container = QWidget()
         grid = QGridLayout(grid_container)
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setSpacing(16)
+        grid.setContentsMargins(0, 12, 0, 0)
+        grid.setSpacing(18)
 
         nombres = self._cfg.nombres_procesos()
-        columnas = 2
+        self._columnas = 2
         for i, nombre in enumerate(nombres):
             cls = self._cfg.procesos[nombre]
             icono = ICONOS.get(nombre, "▶")
@@ -313,22 +366,35 @@ class VistaGridProcesos(QWidget):
                 icono=icono,
             )
             tarjeta.seleccionado.connect(self.proceso_seleccionado.emit)
-            fila = i // columnas
-            col = i % columnas
+            fila = i // self._columnas
+            col = i % self._columnas
             grid.addWidget(tarjeta, fila, col)
             grid.setColumnStretch(col, 1)
 
         # Si hay menos de `columnas * filas` tarjetas, centramos.
-        if len(nombres) < columnas:
-            grid.setColumnStretch(columnas, 1)
+        if len(nombres) < self._columnas:
+            grid.setColumnStretch(self._columnas, 1)
 
         layout.addWidget(grid_container)
         layout.addStretch()
 
         # Pie: cantidad de procesos.
-        pie = QLabel(f"{len(nombres)} procesos disponibles.")
-        pie.setStyleSheet("color: #888; font-size: 11px;")
-        layout.addWidget(pie)
+        self._pie = QLabel(f"  {len(nombres)} procesos disponibles")
+        layout.addWidget(self._pie)
+        self._aplicar_tema(self._tema_actual())
+
+    def _tema_actual(self):
+        from ui.recursos.tema import _paleta
+        return _paleta()
+
+    def _aplicar_tema(self, paleta) -> None:
+        """Reaplica estilos al cambiar de tema."""
+        self._sub.setStyleSheet(
+            f"color: {paleta.fg_muted}; font-size: 13px;"
+        )
+        self._pie.setStyleSheet(
+            f"color: {paleta.fg_muted}; font-size: 11px; padding: 8px 0;"
+        )
 
 
 class PantallaProcesos(QWidget):

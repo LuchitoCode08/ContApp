@@ -30,6 +30,8 @@ class TablaResultados(QWidget):
         self._tabla.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
         )
+        self._tabla.setAlternatingRowColors(True)
+        self._tabla.verticalHeader().setVisible(False)
         self._tabla.horizontalHeader().setSectionResizeMode(
             QHeaderView.ResizeMode.Stretch
         )

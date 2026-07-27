@@ -56,11 +56,13 @@ def arrancar_ui() -> int:
     from PySide6.QtWidgets import QApplication
 
     from app.config import get_config
+    from ui.recursos.tema import aplicar_tema
     from ui.ventanas import VentanaPrincipal
 
     cfg = get_config()
     app = QApplication(sys.argv)
     app.setApplicationName("ContApp")
+    aplicar_tema(app, "claro")
     ventana = VentanaPrincipal()
     ventana.show()
     return app.exec()

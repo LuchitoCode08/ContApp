@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QDragEnterEvent, QDropEvent
+from PySide6.QtGui import QDragEnterEvent, QDropEvent, QFont
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -37,26 +37,50 @@ class DropZone(QFrame):
             e.lower() for e in extensiones_aceptadas
         )
         self.setAcceptDrops(True)
-        self.setFrameShape(QFrame.Shape.StyledPanel)
-        self.setMinimumHeight(120)
-        self._actualizar_estilo(normal=True)
+        self.setObjectName("DropZone")
+        self.setMinimumHeight(140)
+        self._actualizar_estilo(activo=False)
 
-        # Etiqueta principal.
+        # Icono grande + etiqueta principal + sub-texto + boton.
+        self._icono = QLabel("⤓")
+        font_icono = QFont()
+        font_icono.setPointSize(40)
+        font_icono.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
+        self._icono.setFont(font_icono)
+        self._icono.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._icono.setStyleSheet("color: #5B6473; background: transparent;")
+
         self._label = QLabel(mensaje)
         self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._label.setWordWrap(True)
+        self._label.setStyleSheet(
+            "color: #1A1F2C; font-size: 13px; font-weight: 500;"
+            " background: transparent;"
+        )
 
-        # Boton examinar.
-        self._boton = QPushButton("Examinar...")
+        self._sub = QLabel("o usa el botón para explorar")
+        self._sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._sub.setStyleSheet(
+            "color: #5B6473; font-size: 11px; background: transparent;"
+        )
+
+        self._boton = QPushButton("Examinar archivos...")
+        self._boton.setObjectName("primary")
+        self._boton.setCursor(Qt.CursorShape.PointingHandCursor)
         self._boton.clicked.connect(self._abrir_dialogo)
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(4)
+        layout.addWidget(self._icono)
         layout.addWidget(self._label)
-        layout_row = QHBoxLayout()
-        layout_row.addStretch()
-        layout_row.addWidget(self._boton)
-        layout_row.addStretch()
-        layout.addLayout(layout_row)
+        layout.addWidget(self._sub)
+        layout.addSpacing(6)
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        btn_row.addWidget(self._boton)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
 
     def set_extensiones_aceptadas(self, extensiones: tuple[str, ...]) -> None:
         """Actualiza las extensiones aceptadas."""
@@ -70,27 +94,60 @@ class DropZone(QFrame):
 
     # -- Drag & drop --------------------------------------------------
 
-    def _actualizar_estilo(self, normal: bool) -> None:
-        if normal:
+    def _actualizar_estilo(self, activo: bool) -> None:
+        """Cambia el estilo segun haya drag activo encima o no."""
+        from ui.recursos.tema import _paleta
+        p = _paleta()
+        if activo:
             self.setStyleSheet(
-                "DropZone { background-color: #F5F5F5; border: 2px dashed #BDBDBD; }"
-                "DropZone:hover { border: 2px dashed #1976D2; }"
+                f"""
+                DropZone {{
+                    background-color: {p.surface_alt};
+                    border: 2px dashed {p.primary};
+                    border-radius: 12px;
+                }}
+                """
             )
         else:
             self.setStyleSheet(
-                "DropZone { background-color: #E3F2FD; border: 2px solid #1976D2; }"
+                f"""
+                DropZone {{
+                    background-color: {p.surface};
+                    border: 2px dashed {p.border};
+                    border-radius: 12px;
+                }}
+                DropZone:hover {{
+                    background-color: {p.surface_alt};
+                    border-color: {p.primary};
+                }}
+                """
             )
+
+    def _aplicar_tema(self, paleta) -> None:
+        """Reaplica el fondo de la zona y los textos."""
+        self._actualizar_estilo(activo=False)
+        self._icono.setStyleSheet(
+            f"color: {paleta.fg_muted}; background: transparent;"
+        )
+        self._label.setStyleSheet(
+            f"color: {paleta.fg}; font-size: 13px; font-weight: 500;"
+            " background: transparent;"
+        )
+        self._sub.setStyleSheet(
+            f"color: {paleta.fg_muted}; font-size: 11px;"
+            " background: transparent;"
+        )
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
-            self._actualizar_estilo(normal=False)
+            self._actualizar_estilo(activo=True)
 
     def dragLeaveEvent(self, event) -> None:
-        self._actualizar_estilo(normal=True)
+        self._actualizar_estilo(activo=False)
 
     def dropEvent(self, event: QDropEvent) -> None:
-        self._actualizar_estilo(normal=True)
+        self._actualizar_estilo(activo=False)
         urls = event.mimeData().urls()
         archivos = []
         for url in urls:

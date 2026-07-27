@@ -1,8 +1,4 @@
-"""Banner de modo (siempre visible, cambia color segun estado).
-
-Cuando ``activo=True`` se muestra naranja con texto de advertencia.
-Cuando ``activo=False`` se muestra verde con texto indicando modo produccion.
-"""
+"""Banner siempre visible arriba de la app: indica modo (prueba/produccion)."""
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
@@ -11,37 +7,43 @@ from PySide6.QtWidgets import QLabel, QWidget
 
 
 class BannerModoPrueba(QLabel):
-    """Banner que indica el modo actual (siempre visible)."""
+    """Banner con icono + texto del modo activo. Siempre visible."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setFixedHeight(36)
+        self.setFixedHeight(40)
         font = QFont()
         font.setPointSize(11)
         font.setBold(True)
+        font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
         self.setFont(font)
-        # Default: modo produccion. El usuario activa el modo prueba
-        # explicitamente con el switch.
         self.set_activo(False)
 
     def set_activo(self, activo: bool) -> None:
-        """Cambia el texto y color del banner segun el modo."""
+        """Cambia icono + texto + color segun el modo."""
+        self._activo = activo
         if activo:
-            self.setText("MODO PRUEBA  -  Los cambios no se guardaran en produccion")
+            self.setText("⚠  MODO PRUEBA   ·   Los cambios no se guardan en producción")
             self.setStyleSheet(
-                "background-color: #FF9800;"
-                "color: white;"
-                "padding: 4px;"
+                "background-color: #F59E0B;"
+                "color: #1A1F2C;"
+                "padding: 0 16px;"
+                "border: none;"
             )
         else:
-            self.setText("MODO PRODUCCION  -  Los cambios se guardaran en archivos reales")
+            self.setText("●  MODO PRODUCCIÓN   ·   Los cambios se guardan en archivos reales")
             self.setStyleSheet(
-                "background-color: #4CAF50;"
-                "color: white;"
-                "padding: 4px;"
+                "background-color: #16A34A;"
+                "color: #FFFFFF;"
+                "padding: 0 16px;"
+                "border: none;"
             )
 
-    def set_visible(self, visible: bool) -> None:
-        """Compatibilidad con la API anterior: delega en set_activo."""
+    def set_visible(self, visible: bool) -> None:  # noqa: D401  # compat
+        """Compatibilidad con API anterior."""
         self.set_activo(visible)
+
+    def _aplicar_tema(self, paleta) -> None:
+        """Reaplica colores al cambiar de tema (los del banner no dependen del tema)."""
+        self.set_activo(self._activo)

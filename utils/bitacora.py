@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import sys
+from pathlib import Path
 from datetime import datetime
 from pathlib import Path
 
@@ -159,7 +160,7 @@ def quitar_marca_prueba(mensaje: str) -> str:
     return _RE_PRUEBA.sub("", mensaje).rstrip()
 
 
-def obtener_ultimo(proceso: str | None = None) -> dict | None:
+def obtener_ultimo(proceso: str | None = None, ruta_bitacora: Path | str | None = None) -> dict | None:
     """Devuelve el registro del ultimo proceso ejecutado.
 
     Busca en la bitacora el ultimo log que indique ejecucion real de un
@@ -177,7 +178,7 @@ def obtener_ultimo(proceso: str | None = None) -> dict | None:
         extraidos del mensaje) y ``proceso`` (nombre normalizado). None si
         no hay registros que matcheen.
     """
-    registros = leer_registros()
+    registros = leer_registros(ruta_bitacora)
     if not registros:
         return None
 
@@ -234,5 +235,4 @@ def _resolver_ruta_bitacora(ruta_bitacora: Path | str | None) -> Path:
     except Exception:
         # Si el import falla (p.ej. en tests aislados), devolvemos
         # una ruta bajo data/bitacora/.
-        from pathlib import Path
         return Path("data/bitacora/bitacora.log")

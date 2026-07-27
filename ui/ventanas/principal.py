@@ -2,14 +2,14 @@
 
 Estructura:
 +----------------------------------------+
-| Banner naranja (modo prueba)           |
+| Banner naranja/verde (modo prueba)     |
 +------+---------------------------------+
-|      |                                 |
+| Logo |                                 |
 | Side | Pantalla activa                 |
 | bar  | (Inicio / Procesos / ...)       |
 |      |                                 |
 +------+---------------------------------+
-| Switch modo prueba                     |
+| Switch modo prueba | usuario | tema   |
 +----------------------------------------+
 """
 from __future__ import annotations
@@ -22,6 +22,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
+    QApplication,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -38,6 +39,15 @@ from PySide6.QtWidgets import (
 )
 
 from app.config import get_config
+from ui.recursos.tema import (
+    CLARO,
+    ESPACIO_MD,
+    ESPACIO_LG,
+    ESPACIO_SM,
+    OSCURO,
+    aplicar_tema,
+    tema_actual,
+)
 from ui.widgets.banner_modo_prueba import BannerModoPrueba
 from ui.widgets.switch_modo_prueba import SwitchModoPrueba
 from ui.widgets.tarjeta_proceso import TarjetaProceso
@@ -51,42 +61,61 @@ ICONOS: dict[str, str] = {
     "zeus": "⚡",
 }
 
+# Iconos para las secciones del sidebar.
+ICONOS_SECCION: dict[str, str] = {
+    "Inicio": "🏠",
+    "Procesos": "▶",
+    "Diccionarios": "📚",
+    "Configuracion": "⚙",
+}
+
 
 class PanelUltimoEjecutado(QFrame):
     """Panel que muestra info del ultimo proceso ejecutado."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setFrameShape(QFrame.Shape.StyledPanel)
+        self.setObjectName("PanelUltimoEjecutado")
+        self._ultimo: dict | None = None
+        self._construir_ui()
+
+    def _construir_ui(self) -> None:
+        from ui.recursos.tema import _paleta
+        p = _paleta()
         self.setStyleSheet(
-            "PanelUltimoEjecutado {"
-            " background-color: #FAFAFA;"
-            " border: 1px solid #E0E0E0;"
-            " border-radius: 6px;"
-            "}"
+            f"""
+            PanelUltimoEjecutado {{
+                background-color: {p.surface};
+                border: 1px solid {p.border};
+                border-radius: 12px;
+            }}
+            """
         )
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(6)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(8)
 
-        self._titulo = QLabel("Ultimo proceso ejecutado")
+        header_row = QHBoxLayout()
+        self._titulo = QLabel("⏱  Último proceso ejecutado")
         f = QFont()
         f.setBold(True)
-        f.setPointSize(12)
+        f.setPointSize(13)
+        f.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
         self._titulo.setFont(f)
-        layout.addWidget(self._titulo)
+        header_row.addWidget(self._titulo)
+        header_row.addStretch()
+        self._badge = QLabel("")
+        header_row.addWidget(self._badge)
+        layout.addLayout(header_row)
 
         self._proceso = QLabel("—")
-        self._proceso.setStyleSheet("font-size: 18px; font-weight: bold;")
         layout.addWidget(self._proceso)
 
         self._fecha = QLabel("")
-        self._fecha.setStyleSheet("color: #616161;")
         layout.addWidget(self._fecha)
 
         self._archivos_lbl = QLabel("Archivos generados:")
-        self._archivos_lbl.setStyleSheet("color: #616161; margin-top: 8px;")
         layout.addWidget(self._archivos_lbl)
 
         self._archivos_box = QLabel("")
@@ -94,32 +123,80 @@ class PanelUltimoEjecutado(QFrame):
         self._archivos_box.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse
         )
-        self._archivos_box.setStyleSheet(
-            "font-family: 'Consolas', monospace; font-size: 11px;"
-            " color: #212121; background-color: #FFFFFF;"
-            " border: 1px solid #E0E0E0; border-radius: 4px;"
-            " padding: 6px;"
-        )
         self._archivos_box.setMinimumHeight(60)
         layout.addWidget(self._archivos_box)
 
         # Botones: actualizar + ver reporte.
         btn_row = QHBoxLayout()
         btn_row.addStretch()
-        self._btn_refrescar = QPushButton("Refrescar")
+        self._btn_refrescar = QPushButton("↻ Refrescar")
+        self._btn_refrescar.setObjectName("ghost")
         self._btn_refrescar.clicked.connect(self.refrescar)
         btn_row.addWidget(self._btn_refrescar)
-        self._btn_ver = QPushButton("Ver reporte")
-        self._btn_ver.setStyleSheet(
-            "QPushButton { background-color: #1976D2; color: white; "
-            "padding: 6px 14px; }"
-        )
+        self._btn_ver = QPushButton("Ver reporte →")
+        self._btn_ver.setObjectName("primary")
         self._btn_ver.clicked.connect(self._abrir_reporte)
         btn_row.addWidget(self._btn_ver)
         layout.addLayout(btn_row)
 
-        self._ultimo: dict | None = None
         self.refrescar()
+        self._aplicar_estilos_internos()
+
+    def _aplicar_estilos_internos(self) -> None:
+        """Aplica los estilos que dependen del tema (labels internos)."""
+        from ui.recursos.tema import _paleta
+        p = _paleta()
+        self._proceso.setStyleSheet(
+            f"font-size: 20px; font-weight: 700; color: {p.fg};"
+        )
+        self._fecha.setStyleSheet(
+            f"color: {p.fg_muted}; font-size: 12px;"
+        )
+        self._archivos_lbl.setStyleSheet(
+            f"color: {p.fg_muted}; font-size: 11px; margin-top: 12px;"
+            " font-weight: 600; letter-spacing: 0.5px;"
+        )
+        self._archivos_box.setStyleSheet(
+            f"font-family: 'Cascadia Mono', 'Consolas', monospace;"
+            f" font-size: 11px; color: {p.fg};"
+            f" background-color: {p.surface_alt};"
+            f" border: 1px solid {p.border};"
+            " border-radius: 6px; padding: 10px;"
+        )
+        # Reaplicar el badge actual (PRUEBA/PROD).
+        if self._ultimo:
+            from utils.bitacora import es_modo_prueba
+            es_prueba = es_modo_prueba(self._ultimo.get("mensaje", ""))
+            self._set_badge(prueba=es_prueba)
+
+    def _set_badge(self, prueba: bool) -> None:
+        if prueba:
+            self._badge.setText("PRUEBA")
+            self._badge.setStyleSheet(
+                "background-color: #FEF3C7; color: #92400E;"
+                " padding: 4px 10px; border-radius: 10px;"
+                " font-size: 10px; font-weight: 700; letter-spacing: 0.5px;"
+            )
+        else:
+            self._badge.setText("PROD")
+            self._badge.setStyleSheet(
+                "background-color: #DCFCE7; color: #166534;"
+                " padding: 4px 10px; border-radius: 10px;"
+                " font-size: 10px; font-weight: 700; letter-spacing: 0.5px;"
+            )
+
+    def _aplicar_tema(self, paleta) -> None:
+        """Reaplica estilos al cambiar de tema."""
+        self.setStyleSheet(
+            f"""
+            PanelUltimoEjecutado {{
+                background-color: {paleta.surface};
+                border: 1px solid {paleta.border};
+                border-radius: 12px;
+            }}
+            """
+        )
+        self._aplicar_estilos_internos()
 
     def refrescar(self) -> None:
         """Recarga la info desde la bitacora."""
@@ -131,6 +208,7 @@ class PanelUltimoEjecutado(QFrame):
                 "Aun no se ejecuto ningun proceso."
                 " Usa la pantalla Procesos para arrancar."
             )
+            self._badge.setText("")
             self._btn_ver.setEnabled(False)
             return
 
@@ -138,6 +216,10 @@ class PanelUltimoEjecutado(QFrame):
         icono = ICONOS.get(proc, "▶")
         self._proceso.setText(f"{icono} {proc or '(proceso)'}")
         self._fecha.setText(f"Fecha: {self._ultimo['fecha']}")
+        # Badge de modo (PRUEBA / PROD).
+        from utils.bitacora import es_modo_prueba
+        es_prueba = es_modo_prueba(self._ultimo.get("mensaje", ""))
+        self._set_badge(prueba=es_prueba)
         archivos = self._ultimo.get("archivos", [])
         if archivos:
             self._archivos_box.setText("\n".join(archivos))
@@ -186,30 +268,32 @@ class PantallaInicio(QWidget):
 
     def _construir_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(16)
+        layout.setContentsMargins(28, 24, 28, 24)
+        layout.setSpacing(20)
 
         # --- Encabezado de bienvenida ------------------------------
-        titulo = QLabel(f"Hola, {self._cfg.usuario or 'usuario'}")
+        titulo = QLabel(f"👋  Hola, {self._cfg.usuario or 'usuario'}")
         f = QFont()
-        f.setPointSize(22)
+        f.setPointSize(24)
         f.setBold(True)
+        f.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
         titulo.setFont(f)
         layout.addWidget(titulo)
 
         sub = QLabel(
-            "Sistema de Automatizacion Contable. "
-            "Elegi un proceso para empezar o revisa el ultimo que ejecutaste."
+            "Sistema de Automatización Contable. "
+            "Elegí un proceso para empezar o revisá el último que ejecutaste."
         )
         sub.setWordWrap(True)
-        sub.setStyleSheet("color: #616161;")
+        sub.setStyleSheet("color: #5B6473; font-size: 13px; line-height: 1.4;")
         layout.addWidget(sub)
 
-        layout.addSpacing(12)
-
         # --- Grid de tarjetas --------------------------------------
-        grid_lbl = QLabel("Procesos disponibles")
-        grid_lbl.setStyleSheet("font-weight: bold; color: #424242;")
+        grid_lbl = QLabel("PROCESOS DISPONIBLES")
+        grid_lbl.setStyleSheet(
+            "color: #5B6473; font-size: 11px; font-weight: 700;"
+            " letter-spacing: 1.5px; margin-top: 8px;"
+        )
         layout.addWidget(grid_lbl)
 
         grid_container = QWidget()
@@ -235,8 +319,6 @@ class PantallaInicio(QWidget):
 
         layout.addWidget(grid_container)
 
-        layout.addSpacing(8)
-
         # --- Panel "Ultimo ejecutado" ------------------------------
         self.panel_ultimo = PanelUltimoEjecutado()
         layout.addWidget(self.panel_ultimo)
@@ -255,23 +337,54 @@ class VentanaPrincipal(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("ContApp")
-        self.resize(1100, 720)
+        self.setWindowTitle("ContApp · Sistema de Automatización Contable")
+        self.resize(1180, 760)
         self._cfg = get_config()
 
         # Banner modo prueba.
         self.banner = BannerModoPrueba()
 
-        # Sidebar.
+        # --- Sidebar --------------------------------------------------
+        sidebar_container = QWidget()
+        sidebar_container.setObjectName("sidebar_container")
+        sidebar_layout = QVBoxLayout(sidebar_container)
+        sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        sidebar_layout.setSpacing(0)
+
+        # Brand arriba del sidebar.
+        from ui.recursos.tema import _paleta as _p
+        _p_inicial = _p()
+        brand = QLabel("ContApp")
+        brand.setObjectName("brand_label")
+        brand.setStyleSheet(
+            f"font-size: 18px; font-weight: 800; letter-spacing: 1px;"
+            f" padding: 18px 16px 14px 16px; color: {_p_inicial.fg};"
+            f" background-color: {_p_inicial.surface};"
+        )
+        sidebar_layout.addWidget(brand)
+
+        # Lista de secciones.
         self.sidebar = QListWidget()
-        self.sidebar.setFixedWidth(180)
+        self.sidebar.setObjectName("sidebar")
+        self.sidebar.setFixedWidth(220)
         for sec in self.SECCIONES:
-            it = QListWidgetItem(sec)
+            icono = ICONOS_SECCION.get(sec, "")
+            it = QListWidgetItem(f"  {icono}   {sec}")
             self.sidebar.addItem(it)
         self.sidebar.setCurrentRow(0)
         self.sidebar.currentRowChanged.connect(self._cambiar_pantalla)
+        sidebar_layout.addWidget(self.sidebar, 1)
 
-        # Stack de pantallas.
+        # Versión abajo del sidebar.
+        version_lbl = QLabel("v1.0 · Fase 4")
+        version_lbl.setObjectName("version_label")
+        version_lbl.setStyleSheet(
+            f"color: {_p_inicial.fg_muted}; font-size: 10px;"
+            f" padding: 12px 16px; background-color: {_p_inicial.surface};"
+        )
+        sidebar_layout.addWidget(version_lbl)
+
+        # --- Stack de pantallas -------------------------------------
         self.pantalla_inicio = PantallaInicio()
         self.pantalla_procesos = self._crear_pantalla_procesos()
         self.pantalla_diccionarios = self._crear_pantalla_diccionarios()
@@ -297,26 +410,116 @@ class VentanaPrincipal(QMainWindow):
         self.switch.modo_prueba_cambiado.connect(self._on_modo_prueba)
         self._on_modo_prueba(self._cfg.modo_prueba)
 
+        # Toggle de tema (claro/oscuro).
+        self.btn_tema = QPushButton()
+        self.btn_tema.setObjectName("ghost")
+        self.btn_tema.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_tema.setToolTip("Cambiar tema claro / oscuro")
+        self.btn_tema.clicked.connect(self._toggle_tema)
+        self._actualizar_btn_tema()
+
         # Layout central.
         central = QWidget()
         layout = QVBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
         layout.addWidget(self.banner)
 
         body = QHBoxLayout()
-        body.addWidget(self.sidebar)
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(0)
+        body.addWidget(sidebar_container)
         body.addWidget(self.stack, 1)
         layout.addLayout(body, 1)
 
-        footer = QHBoxLayout()
+        # Footer con separador.
+        footer_container = QWidget()
+        footer_container.setObjectName("footer_container")
+        footer_container.setStyleSheet(
+            f"background-color: {_p_inicial.surface};"
+            f" border-top: 1px solid {_p_inicial.border};"
+        )
+        footer = QHBoxLayout(footer_container)
+        footer.setContentsMargins(16, 8, 16, 8)
         footer.addWidget(self.switch)
         footer.addStretch()
-        self._usuario_label = QLabel(f"Usuario: {self._cfg.usuario}")
+        self._usuario_label = QLabel(f"  👤  {self._cfg.usuario}")
+        self._usuario_label.setStyleSheet(
+            f"color: {_p_inicial.fg_muted}; font-size: 12px;"
+            f" padding: 0 8px; background-color: {_p_inicial.surface};"
+        )
         footer.addWidget(self._usuario_label)
-        layout.addLayout(footer)
+        footer.addSpacing(12)
+        footer.addWidget(self.btn_tema)
+        layout.addWidget(footer_container)
 
         self.setCentralWidget(central)
         self.setStatusBar(QStatusBar())
+
+        # Guardar referencias para reaplicar tema.
+        self._sidebar_container = sidebar_container
+        self._footer_container = footer_container
+        self._brand = brand
+        self._version_lbl = version_lbl
+
+    # -- Tema ---------------------------------------------------------
+
+    def _toggle_tema(self) -> None:
+        """Cambia entre tema claro y oscuro."""
+        nuevo = "oscuro" if tema_actual() == "claro" else "claro"
+        aplicar_tema(QApplication.instance(), nuevo)
+        self._actualizar_btn_tema()
+        self.statusBar().showMessage(
+            f"Tema {nuevo} activado", 2000,
+        )
+
+    def _actualizar_btn_tema(self) -> None:
+        """Pone el icono del boton segun el modo actual."""
+        if tema_actual() == "claro":
+            self.btn_tema.setText("🌙  Oscuro")
+        else:
+            self.btn_tema.setText("☀  Claro")
+
+    def _aplicar_tema(self, paleta) -> None:
+        """Reaplica los containers que tienen fondo hardcoded."""
+        # Sidebar container.
+        if hasattr(self, "_sidebar_container"):
+            self._sidebar_container.setStyleSheet(
+                f"background-color: {paleta.surface};"
+            )
+        # Footer container.
+        if hasattr(self, "_footer_container"):
+            self._footer_container.setStyleSheet(
+                f"background-color: {paleta.surface};"
+                f" border-top: 1px solid {paleta.border};"
+            )
+        # Brand.
+        if hasattr(self, "_brand"):
+            self._brand.setStyleSheet(
+                f"font-size: 18px; font-weight: 800; letter-spacing: 1px;"
+                f" padding: 18px 16px 14px 16px; color: {paleta.fg};"
+                f" background-color: {paleta.surface};"
+            )
+        # Version.
+        if hasattr(self, "_version_lbl"):
+            self._version_lbl.setStyleSheet(
+                f"color: {paleta.fg_muted}; font-size: 10px;"
+                f" padding: 12px 16px; background-color: {paleta.surface};"
+            )
+        # Usuario label.
+        if hasattr(self, "_usuario_label"):
+            self._usuario_label.setStyleSheet(
+                f"color: {paleta.fg_muted}; font-size: 12px;"
+                f" padding: 0 8px; background-color: {paleta.surface};"
+            )
+        # Procesar hijos (tarjetas, dropzones, etc.).
+        for w in self.findChildren(object):
+            fn = getattr(w, "_aplicar_tema", None)
+            if callable(fn) and w is not self:
+                try:
+                    fn(paleta)
+                except Exception:
+                    pass
 
     # -- Navegacion -------------------------------------------------
 
