@@ -45,6 +45,7 @@ from ui.recursos.tema import (
     ESPACIO_LG,
     ESPACIO_SM,
     OSCURO,
+    _paleta,
     aplicar_tema,
     tema_actual,
 )
@@ -462,6 +463,14 @@ class VentanaPrincipal(QMainWindow):
         self._brand = brand
         self._version_lbl = version_lbl
 
+        # FIX bug de persistencia: aplicar el tema actual al final del __init__
+        # para que los containers (sidebar/footer/brand/version) tengan los
+        # estilos correctos desde el primer arranque, no solo desde el primer
+        # toggle. Sin esto, si el usuario persistio un tema oscuro y lo
+        # reabre, el sidebar_container queda con stylesheet vacio (fondo
+        # heredado del sistema = blanco/claro).
+        self._aplicar_tema(_paleta())
+
     # -- Tema ---------------------------------------------------------
 
     def _toggle_tema(self) -> None:
@@ -469,6 +478,9 @@ class VentanaPrincipal(QMainWindow):
         nuevo = "oscuro" if tema_actual() == "claro" else "claro"
         aplicar_tema(QApplication.instance(), nuevo)
         self._actualizar_btn_tema()
+        # Persistir el tema elegido en disco.
+        self._cfg.tema = nuevo
+        self._cfg.guardar_preferencias()
         self.statusBar().showMessage(
             f"Tema {nuevo} activado", 2000,
         )
@@ -554,6 +566,8 @@ class VentanaPrincipal(QMainWindow):
     def _on_modo_prueba(self, activo: bool) -> None:
         self._cfg.modo_prueba = activo
         self.banner.set_activo(activo)
+        # Persistir el modo_prueba en disco.
+        self._cfg.guardar_preferencias()
         self.statusBar().showMessage(
             "Modo prueba activado" if activo else "Modo produccion",
             3000,

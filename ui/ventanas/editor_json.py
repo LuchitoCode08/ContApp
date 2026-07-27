@@ -234,6 +234,7 @@ class PantallaDiccionarios(QWidget):
                 f" gridline-color: {paleta.border};"
                 f" border: 1px solid {paleta.border};"
                 f" border-radius: {10}px; }}"
+                + _qss_editor_interno(paleta)
             )
             from PySide6.QtGui import QBrush, QColor
             sec_bg = QColor(paleta.surface_alt)
@@ -614,6 +615,32 @@ def _estilo_celda(item: QTableWidgetItem | None, modificado: bool, nuevo: bool) 
         item.setBackground(QColor(p.surface))
         item.setToolTip("")
 
+def _qss_editor_interno(paleta) -> str:
+    """QSS para el QLineEdit que aparece al editar una celda.
+
+    Sin esto, en modo oscuro el editor interno hereda los colores del
+    item y queda texto claro sobre fondo claro (invisible). Forzamos
+    colores del tema.
+    """
+    return (
+        f"QTableWidget QLineEdit {{"
+        f" background-color: {paleta.surface};"
+        f" color: {paleta.fg};"
+        f" selection-background-color: {paleta.primary};"
+        f" selection-color: {paleta.on_primary};"
+        f" border: 1px solid {paleta.primary};"
+        f" padding: 0 2px;"
+        f" }}"
+        f"QTreeWidget QLineEdit {{"
+        f" background-color: {paleta.surface};"
+        f" color: {paleta.fg};"
+        f" selection-background-color: {paleta.primary};"
+        f" selection-color: {paleta.on_primary};"
+        f" border: 1px solid {paleta.primary};"
+        f" padding: 0 2px;"
+        f" }}"
+    )
+
 
 # ====================================================================
 # Editor Tipo A - plano clave/valor
@@ -978,6 +1005,7 @@ class EditorTipoB(QWidget):
             f" gridline-color: {paleta.border};"
             f" border: 1px solid {paleta.border};"
             f" border-radius: 10px; }}"
+            + _qss_editor_interno(paleta)
         )
         fg_color = QColor(paleta.fg)
         sec_bg = QColor(paleta.surface_alt)
@@ -1132,6 +1160,7 @@ class EditorTipoC(QWidget):
             f" gridline-color: {paleta.border};"
             f" border: 1px solid {paleta.border};"
             f" border-radius: 10px; }}"
+            + _qss_editor_interno(paleta)
         )
         fg_color = QColor(paleta.fg)
         sec_bg = QColor(paleta.surface_alt)

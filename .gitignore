@@ -17,6 +17,9 @@ data/backups/
 # Bitácora (logs)
 data/bitacora/
 
+# Preferencias locales del usuario (tema, modo_prueba, etc.)
+data/usuario.json
+
 # IDEs
 .vscode/
 .idea/

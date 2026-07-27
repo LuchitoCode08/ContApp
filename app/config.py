@@ -4,13 +4,20 @@ Centraliza:
 - rutas del proyecto (raiz, jsons, resultados, bitacora)
 - usuario activo
 - modo_prueba (True/False)
+- tema (claro / oscuro)
 - procesos disponibles
 
 La UI y los modulos de ``core`` leen esta config; nadie lee rutas
 ni constantes del entorno directamente.
+
+Persistencia:
+- usuario, modo_prueba y tema se guardan en ``data/usuario.json``.
+- Al arrancar se cargan; al cambiar el modo_prueba o el tema, se
+  guardan inmediatamente.
 """
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -25,6 +32,9 @@ RESULTADOS_DIR: Path = RAIZ / "resultados"
 BITACORA_DIR: Path = DATA_DIR / "bitacora"
 BITACORA_LOG: Path = BITACORA_DIR / "bitacora.log"
 
+# Archivo donde se persisten las preferencias del usuario.
+PREFERENCIAS: Path = DATA_DIR / "usuario.json"
+
 
 @dataclass
 class Config:
@@ -34,6 +44,8 @@ class Config:
     # Por default la app arranca en modo produccion.
     # El usuario debe activar explicitamente el modo prueba.
     modo_prueba: bool = False
+    # Tema visual: "claro" (default) o "oscuro".
+    tema: str = "claro"
 
     # Procesos disponibles: nombre -> clase.
     # Se llena en ``inicializar_procesos()``.
@@ -47,6 +59,41 @@ class Config:
         """Lista los nombres de procesos disponibles."""
         return list(self.procesos.keys())
 
+    # -- Persistencia ------------------------------------------------
+
+    def cargar_preferencias(self) -> None:
+        """Carga preferencias desde ``data/usuario.json`` (si existe)."""
+        if not PREFERENCIAS.exists():
+            return
+        try:
+            with open(PREFERENCIAS, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return  # archivo corrupto: silencioso, no rompe el arranque
+        self.usuario = str(data.get("usuario", self.usuario)) or self.usuario
+        self.modo_prueba = bool(data.get("modo_prueba", self.modo_prueba))
+        tema = data.get("tema", self.tema)
+        if tema in ("claro", "oscuro"):
+            self.tema = tema
+
+    def guardar_preferencias(self) -> None:
+        """Guarda preferencias en ``data/usuario.json``.
+
+        No lanza excepciones: si no se puede escribir, la app sigue
+        funcionando, solo no se persiste entre sesiones.
+        """
+        try:
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            data = {
+                "usuario": self.usuario,
+                "modo_prueba": self.modo_prueba,
+                "tema": self.tema,
+            }
+            with open(PREFERENCIAS, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+        except OSError:
+            pass
+
 
 _config: Config | None = None
 
@@ -57,7 +104,11 @@ def get_config() -> Config:
     if _config is None:
         _config = Config()
         inicializar_procesos(_config)
-        _config.usuario = os.environ.get("USERNAME", "usuario")
+        # Primero cargamos preferencias (usuario, modo_prueba, tema).
+        _config.cargar_preferencias()
+        # Si no hay preferencias guardadas, usamos el USERNAME del SO.
+        if not _config.usuario:
+            _config.usuario = os.environ.get("USERNAME", "usuario")
     return _config
 
 

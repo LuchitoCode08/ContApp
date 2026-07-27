@@ -62,7 +62,9 @@ def arrancar_ui() -> int:
     cfg = get_config()
     app = QApplication(sys.argv)
     app.setApplicationName("ContApp")
-    aplicar_tema(app, "claro")
+    # Aplica el tema que el usuario eligio la ultima vez (persiste en
+    # ``data/usuario.json``). Default: claro.
+    aplicar_tema(app, cfg.tema)
     ventana = VentanaPrincipal()
     ventana.show()
     return app.exec()
