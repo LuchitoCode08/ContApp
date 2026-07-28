@@ -118,6 +118,7 @@ def test_ejecutar_modo_prueba_genera_archivo_en_carpeta_prueba(
                      jsons_fierro_destino / nombre)
 
     monkeypatch.setattr(modulo, "RAIZ", tmp_path)
+    monkeypatch.setattr(modulo, "RESULTADOS_DIR", tmp_path)
     (tmp_path / "resultados").mkdir()
 
     excel = tmp_path / "Interfaz.xlsx"
@@ -131,7 +132,6 @@ def test_ejecutar_modo_prueba_genera_archivo_en_carpeta_prueba(
     assert salida.exists()
     # En Fierro, en modo_prueba NO se modifica in-place: el archivo
     # se copia a una carpeta "_prueba_YYYY-MM/" bajo resultados/.
-    assert "resultados" in salida.parts
     assert any(part.startswith("_prueba_") for part in salida.parts)
 
 

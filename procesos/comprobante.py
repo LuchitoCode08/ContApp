@@ -23,6 +23,7 @@ import pandas as pd
 from dateutil.relativedelta import relativedelta
 from openpyxl import Workbook
 
+from app.config import RESULTADOS_DIR
 from procesos.base import ProcesoBase, ResultadoProceso
 from utils.archivos import carpeta_modo_prueba, carpeta_resultados
 from utils.bitacora import log
@@ -470,9 +471,9 @@ class ProcesoComprobante(ProcesoBase):
         por_cuentas, por_conceptos, intereses, gastos = self._copy_data(copia)
 
         if modo_prueba:
-            carpeta = carpeta_modo_prueba(RAIZ / "resultados", self.nombre)
+            carpeta = carpeta_modo_prueba(RESULTADOS_DIR, self.nombre)
         else:
-            carpeta = carpeta_resultados(RAIZ / "resultados", self.nombre)
+            carpeta = carpeta_resultados(RESULTADOS_DIR, self.nombre)
 
         try:
             ruta_excel = self._writer_excel({

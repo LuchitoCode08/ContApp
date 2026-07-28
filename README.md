@@ -32,7 +32,7 @@ Switch de **modo prueba**, nombre de **usuario activo** y selector de **tema** (
 ### Características de UI
 
 - 🎨 **Tema claro/oscuro** — `ui/recursos/tema.py` con paleta dinámica. Se aplica a toda la app y se persiste en `data/usuario.json`.
-- 🟡 **Modo prueba** — banner amarillo visible cuando está activo; los archivos se escriben en `resultados/<proceso>/_prueba_YYYY-MM/` con sufijo `_prueba` en el nombre.
+- 🟡 **Modo prueba** — banner amarillo visible cuando está activo; los archivos se escriben en `%USERPROFILE%\Documents\ContApp_Resultados/<proceso>/_prueba_YYYY-MM/` con sufijo `_prueba` en el nombre.
 - 🧪 **Badge "EN DESARROLLO"** — los procesos no listos se ven con opacidad reducida, badge ámbar y click bloqueado.
 - 💾 **Persistencia** — usuario, modo prueba y tema se guardan en `data/usuario.json` y se restauran al arrancar.
 - 🖱️ **Cursor mano** sobre items clickeables (sidebar, tarjetas, botones primarios).
@@ -85,11 +85,6 @@ Demo/
 │   ├── backups/                 # Respaldos automáticos de JSONs
 │   └── usuario.json             # Preferencias del usuario actual
 │
-├── resultados/                  # Salidas (fuera del programa, ver Config)
-│   ├── comprobante/
-│   ├── fierro/
-│   └── zeus/
-│
 ├── log/                         # Registros de la app
 │   ├── bitacora.log             # Log automático (rotación por fecha)
 │   └── BITACORA.md              # Bitácora de la sesión actual
@@ -105,6 +100,19 @@ Demo/
     └── test_zeus_e2e.py         # 4 saltados mientras EN_DESARROLLO=True
 ```
 
+> **Nota:** los resultados NO viven en el repo. Ver tabla "Ubicaciones importantes" abajo.
+
+### Ubicaciones importantes (fuera del repo)
+
+| Recurso | Ruta | Definido en |
+|---|---|---|
+| Outputs de procesos | `%USERPROFILE%\Documents\ContApp_Resultados\` | `app/config.py:RESULTADOS_DIR` |
+| Preferencias del usuario | `<repo>/data/usuario.json` | `app/config.py:PREFERENCIAS` |
+| Log automático | `<repo>/log/bitacora.log` | `app/config.py:BITACORA_LOG` |
+| Backups de JSONs | `<repo>/data/backups/` | `utils/json_manager.py` |
+
+> `RESULTADOS_DIR` está fuera del repo a propósito: cada usuario de Windows tiene su propia carpeta en `Documents\`, evitando mezclar outputs cuando se clona el proyecto en otra máquina.
+
 ## Instalación
 
 ```powershell
@@ -119,13 +127,15 @@ pip install -r requirements.txt
 python main.py
 ```
 
+La primera vez que se ejecuta crea `data/usuario.json` automáticamente (tema, modo prueba, usuario activo).
+
 ## Pruebas
 
 ```powershell
 python -m pytest
 ```
 
-Estado actual: **89 passed, 4 skipped** (los 4 skipped son de Zeus, mientras esté `EN_DESARROLLO=True`).
+Estado actual: **89 passed, 4 skipped** (los 4 skipped son los tests de ejecución de Zeus, mientras `EN_DESARROLLO=True`).
 
 ## Empaquetado (.exe)
 
@@ -133,12 +143,12 @@ Estado actual: **89 passed, 4 skipped** (los 4 skipped son de Zeus, mientras est
 pyinstaller --noconfirm --onefile --windowed --name ContApp main.py
 ```
 
-El `.exe` queda en `dist/ContApp.exe`. La primera vez que se ejecuta crea `data/usuario.json` automáticamente.
+El `.exe` queda en `dist/ContApp.exe`.
 
 ## Estado
 
 - ✅ Fase 1 — Preparación del entorno
 - ✅ Fase 2 — Núcleo de la app (lógica pura, sin UI)
-- ✅ Fase 3 — Interfaz gráfica (PySide6, 4 pantallas, tema claro/oscuro)
-- ✅ Fase 4 — Pruebas y ajustes (93 tests, persistencia, modo prueba, badge "EN DESARROLLO")
+- ✅ Fase 3 — Interfaz gráfica (PySide6, 4 pantallas, tema claro/oscuro, badge EN DESARROLLO)
+- ✅ Fase 4 — Pruebas y ajustes (93 tests, persistencia, modo prueba, botón secundario)
 - ⏳ Fase 5 — Empaquetado con PyInstaller

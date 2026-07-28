@@ -26,6 +26,7 @@ import pandas as pd
 from openpyxl import load_workbook
 from dateutil.relativedelta import relativedelta
 
+from app.config import RESULTADOS_DIR
 from procesos.base import ProcesoBase, ResultadoProceso
 from utils.archivos import carpeta_modo_prueba, carpeta_resultados
 from utils.bitacora import log
@@ -422,7 +423,7 @@ class ProcesoFierro(ProcesoBase):
             return ResultadoProceso(exito=False, mensaje=f"Error al procesar: {e}")
 
         if modo_prueba:
-            carpeta = carpeta_modo_prueba(RAIZ / "resultados", self.nombre)
+            carpeta = carpeta_modo_prueba(RESULTADOS_DIR, self.nombre)
             import shutil
             destino = carpeta / excel_path.name
             shutil.copy2(excel_path, destino)

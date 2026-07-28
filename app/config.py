@@ -26,9 +26,10 @@ from pathlib import Path
 RAIZ: Path = Path(__file__).resolve().parent.parent
 
 # Carpetas importantes (relativas a la raiz).
+DOCUMENTS: Path = Path.home() / "Documents"
 DATA_DIR: Path = RAIZ / "data"
 JSONS_DIR: Path = RAIZ / "jsons"
-RESULTADOS_DIR: Path = RAIZ / "resultados"
+RESULTADOS_DIR: Path = DOCUMENTS / "ContApp_Resultados"
 LOG_DIR: Path = RAIZ / "log"
 BITACORA_DIR: Path = LOG_DIR
 BITACORA_LOG: Path = LOG_DIR / "bitacora.log"

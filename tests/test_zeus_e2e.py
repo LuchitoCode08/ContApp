@@ -134,6 +134,7 @@ def test_ejecutar_modo_prueba_genera_archivo_en_carpeta_prueba(
                  jsons_zeus_destino / "auxiliares_zeus.json")
 
     monkeypatch.setattr(modulo, "RAIZ", tmp_path)
+    monkeypatch.setattr(modulo, "RESULTADOS_DIR", tmp_path)
     (tmp_path / "resultados").mkdir()
 
     excel = tmp_path / "InterfazZeus.xlsx"

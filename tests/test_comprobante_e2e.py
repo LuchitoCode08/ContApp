@@ -17,6 +17,7 @@ RAIZ = Path(__file__).resolve().parent.parent
 if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
+from app.config import RESULTADOS_DIR as APP_RESULTADOS_DIR
 from app.config import RAIZ as APP_RAIZ
 from procesos.comprobante import ProcesoComprobante
 
@@ -89,8 +90,8 @@ def test_ejecutar_en_modo_prueba_genera_archivos(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """En modo prueba, ejecutar() genera 1 o 2 archivos Excel en /resultados/_prueba_*/."""
-    # Redirigimos RAIZ para que los resultados vayan a tmp_path en vez del repo.
-    monkeypatch.setattr("procesos.comprobante.RAIZ", tmp_path)
+    # Redirigimos RESULTADOS_DIR para que los resultados vayan a tmp_path en vez del repo.
+    monkeypatch.setattr("procesos.comprobante.RESULTADOS_DIR", tmp_path)
 
     resultado = proceso.ejecutar([zip_sintetico], modo_prueba=True)
 
@@ -118,7 +119,7 @@ def test_ejecutar_en_modo_produccion_genera_archivos(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """En modo produccion, ejecutar() genera archivos en /resultados/<proceso>/YYYY-MM/."""
-    monkeypatch.setattr("procesos.comprobante.RAIZ", tmp_path)
+    monkeypatch.setattr("procesos.comprobante.RESULTADOS_DIR", tmp_path)
 
     resultado = proceso.ejecutar([zip_sintetico], modo_prueba=False)
 
