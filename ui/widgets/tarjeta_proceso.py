@@ -34,13 +34,20 @@ class TarjetaProceso(QFrame):
         nombre: str,
         descripcion: str,
         icono: str = "▶",
+        en_desarrollo: bool = False,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.nombre = nombre
+        self.en_desarrollo = en_desarrollo
         self._acento = color_proceso(nombre)
         self.setObjectName("TarjetaProceso")
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        # Si esta en desarrollo, cursor normal (no es clickeable para ejecutar).
+        self.setCursor(
+            Qt.CursorShape.PointingHandCursor
+            if not en_desarrollo
+            else Qt.CursorShape.ArrowCursor
+        )
         self.setMinimumSize(220, 170)
         self.setMaximumHeight(220)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -59,6 +66,22 @@ class TarjetaProceso(QFrame):
         self._icono_label.setFont(font_icono)
         self._icono_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._icono_label)
+
+        # Badge "EN DESARROLLO" (solo si aplica).
+        if en_desarrollo:
+            self._badge_label = QLabel("EN DESARROLLO")
+            self._badge_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._badge_label.setStyleSheet(
+                "background-color: #FEF3C7;"
+                " color: #92400E;"
+                " padding: 3px 10px;"
+                " border-radius: 10px;"
+                " font-size: 9px;"
+                " font-weight: 700;"
+                " letter-spacing: 0.8px;"
+                " border: 1px solid #F59E0B;"
+            )
+            layout.addWidget(self._badge_label)
 
         # Nombre del proceso (caps + bold).
         self._nombre_label = QLabel(nombre.upper())
@@ -106,6 +129,7 @@ class TarjetaProceso(QFrame):
             borde = p.border
             ancho = 1
         # Borde superior coloreado (identidad del proceso).
+        opacity = "0.6;" if self.en_desarrollo else "1;"
         self.setStyleSheet(
             f"""
             TarjetaProceso {{
@@ -113,6 +137,7 @@ class TarjetaProceso(QFrame):
                 border: {ancho}px solid {borde};
                 border-top: 4px solid {self._acento};
                 border-radius: 10px;
+                opacity: {opacity}
             }}
             """
         )
@@ -126,12 +151,18 @@ class TarjetaProceso(QFrame):
         self._actualizar_estilo(hover=False, presionado=False)
 
     def mousePressEvent(self, event) -> None:
+        # Si esta en desarrollo, ignorar el click (no resalta).
+        if self.en_desarrollo:
+            return
         if event.button() == Qt.MouseButton.LeftButton:
             self._actualizar_estilo(hover=True, presionado=True)
 
     def mouseReleaseEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
             self._actualizar_estilo(hover=self.underMouse(), presionado=False)
+            # Si esta en desarrollo, NO emitir seleccionado.
+            if self.en_desarrollo:
+                return
             self.seleccionado.emit(self.nombre)
 
     def _aplicar_tema(self, paleta) -> None:

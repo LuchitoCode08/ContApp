@@ -364,6 +364,7 @@ class VistaGridProcesos(QWidget):
                 nombre=nombre,
                 descripcion=cls().descripcion,
                 icono=icono,
+                en_desarrollo=getattr(cls, "EN_DESARROLLO", False),
             )
             tarjeta.seleccionado.connect(self.proceso_seleccionado.emit)
             fila = i // self._columnas

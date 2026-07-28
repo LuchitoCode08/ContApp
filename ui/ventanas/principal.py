@@ -311,6 +311,7 @@ class PantallaInicio(QWidget):
                 nombre=nombre,
                 descripcion=cls().descripcion,
                 icono=icono,
+                en_desarrollo=getattr(cls, "EN_DESARROLLO", False),
             )
             tarjeta.seleccionado.connect(self.proceso_solicitado.emit)
             fila = i // columnas

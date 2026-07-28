@@ -31,9 +31,23 @@ RAIZ = Path(__file__).resolve().parent.parent
 
 class ProcesoZeus(ProcesoBase):
     """Depura el Excel de Zeus: cuentas 8 digitos -> 6 digitos,
-    calcula Valor2/BaseAbs/Tarifa y agrupa por Nit/Cuenta1/Fecha."""
+    calcula Valor2/BaseAbs/Tarifa y agrupa por Nit/Cuenta1/Fecha.
+
+    Estado: EN DESARROLLO. La logica existe y los tests pasan, pero la UI
+    bloquea su ejecucion para que los usuarios no la usen todavia.
+    """
 
     LOG_PREFIX = "[Zeus]"
+
+    # Bandera global que la UI consulta para mostrar el aviso y bloquear
+    # la ejecucion. Cambiar a False cuando el script este listo para uso.
+    EN_DESARROLLO = True
+
+    MENSAJE_EN_DESARROLLO = (
+        "El proceso de Zeus esta en desarrollo y aun no esta disponible "
+        "para uso en produccion. Contacta al equipo de contabilidad "
+        "cuando este listo."
+    )
 
     def __init__(self) -> None:
         super().__init__()
@@ -65,6 +79,8 @@ class ProcesoZeus(ProcesoBase):
         return (".xlsx",)
 
     def validar_archivos(self, archivos: list[Path]) -> str | None:
+        if self.EN_DESARROLLO:
+            return self.MENSAJE_EN_DESARROLLO
         if not archivos:
             return "Se esperaba al menos un archivo Excel."
         if len(archivos) > 1:

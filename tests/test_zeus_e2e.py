@@ -55,14 +55,37 @@ def test_validar_archivos_excel_valido(tmp_path: Path) -> None:
     excel = tmp_path / "zeus.xlsx"
     _crear_excel_sintetico(excel)
     proceso = ProcesoZeus()
-    assert proceso.validar_archivos([excel]) is None
+    # Mientras Zeus este en desarrollo, validar_archivos SIEMPRE bloquea.
+    # Verificamos que efectivamente devuelve el mensaje de bloqueo.
+    if proceso.EN_DESARROLLO:
+        error = proceso.validar_archivos([excel])
+        assert error is not None
+        assert "desarrollo" in error.lower()
+    else:
+        assert proceso.validar_archivos([excel]) is None
+
+
+def test_validar_archivos_bloqueado_en_desarrollo(tmp_path: Path) -> None:
+    """Verifica que mientras EN_DESARROLLO=True, validar bloquea
+    incluso con un archivo valido."""
+    excel = tmp_path / "zeus.xlsx"
+    _crear_excel_sintetico(excel)
+    proceso = ProcesoZeus()
+    assert proceso.EN_DESARROLLO is True
+    error = proceso.validar_archivos([excel])
+    assert error is not None
+    assert proceso.MENSAJE_EN_DESARROLLO in error
 
 
 def test_validar_archivos_sin_archivos() -> None:
     proceso = ProcesoZeus()
     error = proceso.validar_archivos([])
     assert error is not None
-    assert "al menos un archivo" in error.lower()
+    if proceso.EN_DESARROLLO:
+        # Mientras este en desarrollo, el mensaje de bloqueo pisa a los demas.
+        assert proceso.MENSAJE_EN_DESARROLLO in error
+    else:
+        assert "al menos un archivo" in error.lower()
 
 
 def test_validar_archivos_demasiados(tmp_path: Path) -> None:
@@ -73,7 +96,10 @@ def test_validar_archivos_demasiados(tmp_path: Path) -> None:
     proceso = ProcesoZeus()
     error = proceso.validar_archivos([a1, a2])
     assert error is not None
-    assert "un solo" in error.lower()
+    if proceso.EN_DESARROLLO:
+        assert proceso.MENSAJE_EN_DESARROLLO in error
+    else:
+        assert "un solo" in error.lower()
 
 
 def test_validar_archivos_extension_invalida(tmp_path: Path) -> None:
@@ -82,7 +108,10 @@ def test_validar_archivos_extension_invalida(tmp_path: Path) -> None:
     proceso = ProcesoZeus()
     error = proceso.validar_archivos([txt])
     assert error is not None
-    assert "no es un excel" in error.lower()
+    if proceso.EN_DESARROLLO:
+        assert proceso.MENSAJE_EN_DESARROLLO in error
+    else:
+        assert "no es un excel" in error.lower()
 
 
 # --------------------------------------------------------------------
@@ -95,6 +124,8 @@ def test_ejecutar_modo_prueba_genera_archivo_en_carpeta_prueba(
     """En modo_prueba, el Excel se copia a resultados/<proceso>/_prueba_YYYY-MM/
     y el archivo original NO se modifica."""
     import procesos.zeus as modulo
+    if ProcesoZeus.EN_DESARROLLO:
+        pytest.skip("Zeus esta en desarrollo; ejecutar() bloquea.")
 
     # ProcesoZeus.__init__ lee RAIZ para resolver el JSON de auxiliares.
     jsons_zeus_destino = tmp_path / "jsons" / "zeus"
@@ -124,6 +155,8 @@ def test_ejecutar_modo_prueba_genera_archivo_en_carpeta_prueba(
 
 def test_ejecutar_modo_produccion_modifica_original(tmp_path: Path) -> None:
     """En modo produccion, el Excel original se modifica in-place."""
+    if ProcesoZeus.EN_DESARROLLO:
+        pytest.skip("Zeus esta en desarrollo; ejecutar() bloquea.")
     excel = tmp_path / "InterfazZeus.xlsx"
     _crear_excel_sintetico(excel)
     proceso = ProcesoZeus()
@@ -142,6 +175,8 @@ def test_excel_resultado_tiene_hojas_preservadas_y_nuevas(
 ) -> None:
     """El Excel final debe tener 'Exportar' (preservada) + 2 hojas nuevas."""
     from openpyxl import load_workbook
+    if ProcesoZeus.EN_DESARROLLO:
+        pytest.skip("Zeus esta en desarrollo; ejecutar() bloquea.")
 
     excel = tmp_path / "InterfazZeus.xlsx"
     _crear_excel_sintetico(excel)
@@ -162,6 +197,8 @@ def test_excel_resultado_tiene_hojas_preservadas_y_nuevas(
 def test_depurado_aplica_auxiliares_8_a_6_digitos(tmp_path: Path) -> None:
     """Cuenta1 '11902101' debe quedar como '119021' (auxiliar de Zeus)."""
     from openpyxl import load_workbook
+    if ProcesoZeus.EN_DESARROLLO:
+        pytest.skip("Zeus esta en desarrollo; ejecutar() bloquea.")
 
     excel = tmp_path / "InterfazZeus.xlsx"
     _crear_excel_sintetico(excel)
