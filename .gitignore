@@ -15,7 +15,7 @@ resultados/
 data/backups/
 
 # Bitácora (logs)
-data/bitacora/
+log/bitacora.log
 
 # Preferencias locales del usuario (tema, modo_prueba, etc.)
 data/usuario.json

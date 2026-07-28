@@ -83,7 +83,6 @@ Demo/
 │
 ├── data/                        # Estado y datos persistentes
 │   ├── backups/                 # Respaldos automáticos de JSONs
-│   ├── bitacora/                # Logs históricos
 │   └── usuario.json             # Preferencias del usuario actual
 │
 ├── resultados/                  # Salidas (fuera del programa, ver Config)
@@ -91,7 +90,8 @@ Demo/
 │   ├── fierro/
 │   └── zeus/
 │
-├── log/
+├── log/                         # Registros de la app
+│   ├── bitacora.log             # Log automático (rotación por fecha)
 │   └── BITACORA.md              # Bitácora de la sesión actual
 │
 └── tests/                       # 93 tests (pytest)

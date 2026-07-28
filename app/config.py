@@ -1,7 +1,7 @@
 """Configuracion global de ContApp (singleton).
 
 Centraliza:
-- rutas del proyecto (raiz, jsons, resultados, bitacora)
+- rutas del proyecto (raiz, jsons, resultados, log)
 - usuario activo
 - modo_prueba (True/False)
 - tema (claro / oscuro)
@@ -29,8 +29,9 @@ RAIZ: Path = Path(__file__).resolve().parent.parent
 DATA_DIR: Path = RAIZ / "data"
 JSONS_DIR: Path = RAIZ / "jsons"
 RESULTADOS_DIR: Path = RAIZ / "resultados"
-BITACORA_DIR: Path = DATA_DIR / "bitacora"
-BITACORA_LOG: Path = BITACORA_DIR / "bitacora.log"
+LOG_DIR: Path = RAIZ / "log"
+BITACORA_DIR: Path = LOG_DIR
+BITACORA_LOG: Path = LOG_DIR / "bitacora.log"
 
 # Archivo donde se persisten las preferencias del usuario.
 PREFERENCIAS: Path = DATA_DIR / "usuario.json"
