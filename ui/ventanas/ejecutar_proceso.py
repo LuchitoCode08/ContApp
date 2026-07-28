@@ -91,11 +91,18 @@ class VistaEjecucion(QWidget):
         layout.setSpacing(14)
 
         # --- Header con boton "Volver" + nombre del proceso ---------
+        volver_row = QHBoxLayout()
+        volver_row.setContentsMargins(0, 0, 0, 0)
+        volver_row.setSpacing(0)
         self.btn_volver = QPushButton("←  Procesos")
-        self.btn_volver.setObjectName("ghost")
+        self.btn_volver.setObjectName("secondary")
         self.btn_volver.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_volver.setMinimumWidth(140)
+        self.btn_volver.setMaximumWidth(180)
         self.btn_volver.clicked.connect(self.proceso_cambiado.emit)
-        layout.addWidget(self.btn_volver)
+        volver_row.addWidget(self.btn_volver)
+        volver_row.addStretch()
+        layout.addLayout(volver_row)
 
         titulo_row = QHBoxLayout()
         self._icono_label = QLabel("▶")

@@ -19,7 +19,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QApplication,
@@ -369,12 +369,16 @@ class VentanaPrincipal(QMainWindow):
         self.sidebar = QListWidget()
         self.sidebar.setObjectName("sidebar")
         self.sidebar.setFixedWidth(220)
+        self.sidebar.setMouseTracking(True)
         for sec in self.SECCIONES:
             icono = ICONOS_SECCION.get(sec, "")
             it = QListWidgetItem(f"  {icono}   {sec}")
             self.sidebar.addItem(it)
         self.sidebar.setCurrentRow(0)
         self.sidebar.currentRowChanged.connect(self._cambiar_pantalla)
+        # Cursor "mano" al pasar por encima de cada item.
+        self.sidebar.viewport().setMouseTracking(True)
+        self.sidebar.viewport().installEventFilter(self)
         sidebar_layout.addWidget(self.sidebar, 1)
 
         # Versión abajo del sidebar.
@@ -542,6 +546,27 @@ class VentanaPrincipal(QMainWindow):
             # Si volvemos a Inicio, refrescamos el panel de ultimo ejecutado.
             if idx == 0:
                 self.pantalla_inicio.refrescar_ultimo()
+
+    def eventFilter(self, obj, event) -> bool:
+        """Cambia el cursor a "mano" cuando el mouse pasa por encima
+        de un item del sidebar (y vuelve a flecha cuando esta en un
+        area vacia)."""
+        if obj is self.sidebar.viewport():
+            if event.type() == QEvent.Type.MouseMove:
+                item = self.sidebar.itemAt(event.pos())
+                if item is not None:
+                    self.sidebar.viewport().setCursor(
+                        Qt.CursorShape.PointingHandCursor
+                    )
+                else:
+                    self.sidebar.viewport().setCursor(
+                        Qt.CursorShape.ArrowCursor
+                    )
+            elif event.type() == QEvent.Type.Leave:
+                self.sidebar.viewport().setCursor(
+                    Qt.CursorShape.ArrowCursor
+                )
+        return super().eventFilter(obj, event)
 
     def _ir_a_procesos_preseleccionado(self, nombre: str) -> None:
         """Click en tarjeta del dashboard: salta a Procesos con ese proceso."""

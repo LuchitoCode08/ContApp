@@ -179,17 +179,20 @@ class PantallaDiccionarios(QWidget):
         flayout.addStretch()
 
         self.btn_agregar = QPushButton("＋  Agregar")
+        self.btn_agregar.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_agregar.clicked.connect(self._on_agregar)
         self.btn_agregar.setEnabled(False)
         flayout.addWidget(self.btn_agregar)
 
         self.btn_cancelar = QPushButton("Cancelar")
+        self.btn_cancelar.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_cancelar.clicked.connect(self._on_cancelar)
         self.btn_cancelar.setEnabled(False)
         flayout.addWidget(self.btn_cancelar)
 
         self.btn_guardar = QPushButton("💾  Guardar cambios")
         self.btn_guardar.setObjectName("primary")
+        self.btn_guardar.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_guardar.clicked.connect(self._on_guardar)
         self.btn_guardar.setEnabled(False)
         flayout.addWidget(self.btn_guardar)

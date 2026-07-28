@@ -272,6 +272,22 @@ def _qss_global(p: Paleta) -> str:
         background-color: {p.surface_alt};
         color: {p.fg};
     }}
+    QPushButton#secondary {{
+        background-color: {p.surface_alt};
+        color: {p.primary};
+        border: 1px solid {p.primary};
+        border-radius: {RADIO_MD}px;
+        padding: 6px {ESPACIO_MD}px;
+        font-weight: 600;
+    }}
+    QPushButton#secondary:hover {{
+        background-color: {p.primary};
+        color: {p.on_primary};
+    }}
+    QPushButton#secondary:pressed {{
+        background-color: {p.primary_pressed};
+        color: {p.on_primary};
+    }}
 
     /* ------- Inputs ------- */
     QLineEdit, QComboBox, QDateEdit, QSpinBox {{
