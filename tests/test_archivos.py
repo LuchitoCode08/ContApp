@@ -45,13 +45,16 @@ def test_timestamp_unico_sin_colisiones_en_rapida_sucesion() -> None:
 
 
 def test_carpeta_resultados_crea_estructura(tmp_path: Path) -> None:
-    """carpeta_resultados crea <base>/<proceso>/YYYY-MM/."""
+    """carpeta_resultados crea <base>/<proceso>/YYYY-Mes/ (ej: 2026-Julio)."""
     base = tmp_path / "resultados"
     carpeta = carpeta_resultados(base, "comprobante")
     assert carpeta.exists()
     assert carpeta.is_dir()
-    # Formato YYYY-MM (10 chars).
-    assert re.match(r"^\d{4}-\d{2}$", carpeta.name), f"Nombre invalido: {carpeta.name}"
+    # Formato YYYY-Mes (ej: '2026-Julio'). El mes es en espanol, sin
+    # acentos y capitalizado.
+    assert re.match(r"^\d{4}-(Enero|Febrero|Marzo|Abril|Mayo|Junio|"
+                    r"Julio|Agosto|Septiembre|Octubre|Noviembre|Diciembre)$",
+                    carpeta.name), f"Nombre invalido: {carpeta.name}"
     # El proceso debe estar en el path.
     assert "comprobante" in carpeta.parts
 
@@ -65,13 +68,27 @@ def test_carpeta_resultados_idempotente(tmp_path: Path) -> None:
     assert c1.exists()
 
 
+def test_carpeta_resultados_respeta_fecha_pasada() -> None:
+    """Si se le pasa una fecha, crea la carpeta de ese mes."""
+    from datetime import datetime
+    base = Path("./tmp_test_carpeta")
+    carpeta = carpeta_resultados(base, "comprobante",
+                                 fecha=datetime(2025, 3, 15))
+    assert carpeta.name == "2025-Marzo"
+    # Limpieza
+    import shutil
+    shutil.rmtree(base, ignore_errors=True)
+
+
 def test_carpeta_modo_prueba_prefijo(tmp_path: Path) -> None:
-    """carpeta_modo_prueba usa prefijo _prueba_YYYY-MM."""
+    """carpeta_modo_prueba usa prefijo _prueba_YYYY-Mes."""
     base = tmp_path / "resultados"
     carpeta = carpeta_modo_prueba(base, "zeus")
     assert carpeta.exists()
     assert carpeta.name.startswith("_prueba_")
-    assert re.match(r"^_prueba_\d{4}-\d{2}$", carpeta.name)
+    assert re.match(r"^_prueba_\d{4}-(Enero|Febrero|Marzo|Abril|Mayo|Junio|"
+                    r"Julio|Agosto|Septiembre|Octubre|Noviembre|Diciembre)$",
+                    carpeta.name), f"Nombre invalido: {carpeta.name}"
 
 
 def test_copiar_a_carpeta_basico(tmp_path: Path) -> None:
