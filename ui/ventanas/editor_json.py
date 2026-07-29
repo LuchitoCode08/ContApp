@@ -45,6 +45,7 @@ from utils.json_manager import (
     TIPO_B,
     TIPO_C,
     TIPO_D,
+    con_lock,
     detectar_tipo,
     escribir_json,
     leer_json,
@@ -541,30 +542,49 @@ class PantallaDiccionarios(QWidget):
         )
         if resp != QMessageBox.StandardButton.Yes:
             return
-        try:
-            backup = escribir_json(self._ruta_actual, self._datos_actuales)
-            cfg = get_config()
-            sufijo = " [PRUEBA]" if cfg.modo_prueba else ""
-            log().info(
-                "Diccionarios: guardado %s (backup=%s)%s",
-                self._ruta_actual.name,
-                backup.name if backup else "ninguno",
-                sufijo,
-            )
-            QMessageBox.information(
-                self,
-                "Guardado",
-                f"Cambios guardados correctamente.\n\n"
-                f"Backup: {backup.name if backup else '(no se creo)'}",
-            )
-            # Actualizamos el snapshot.
-            self._datos_originales = copy.deepcopy(self._datos_actuales)
-            self._actualizar_contador_cambios()
-        except Exception as e:
-            log().exception("Error al guardar JSON: %s", e)
-            QMessageBox.critical(
-                self, "Error al guardar", f"No se pudo guardar:\n{e}"
-            )
+
+        # Adquirimos lock para evitar pisar el archivo si un proceso
+        # esta leyendolo (los procesos cargan JSONs en __init__, asi que
+        # normalmente no toca disco, pero nos defendemos por si en el
+        # futuro alguien agrega una lectura en runtime).
+        with con_lock(self._ruta_actual) as lock:
+            if lock is None:
+                QMessageBox.warning(
+                    self,
+                    "JSON bloqueado",
+                    f"Otro proceso esta usando este JSON.\n\n"
+                    f"{self._ruta_actual.name}\n\n"
+                    "Cierra los procesos que lo esten usando e intenta de nuevo.",
+                )
+                log().warning(
+                    "Diccionarios: lock no adquirido para %s",
+                    self._ruta_actual,
+                )
+                return
+            try:
+                backup = escribir_json(self._ruta_actual, self._datos_actuales)
+                cfg = get_config()
+                sufijo = " [PRUEBA]" if cfg.modo_prueba else ""
+                log().info(
+                    "Diccionarios: guardado %s (backup=%s)%s",
+                    self._ruta_actual.name,
+                    backup.name if backup else "ninguno",
+                    sufijo,
+                )
+                QMessageBox.information(
+                    self,
+                    "Guardado",
+                    f"Cambios guardados correctamente.\n\n"
+                    f"Backup: {backup.name if backup else '(no se creo)'}",
+                )
+                # Actualizamos el snapshot.
+                self._datos_originales = copy.deepcopy(self._datos_actuales)
+                self._actualizar_contador_cambios()
+            except Exception as e:
+                log().exception("Error al guardar JSON: %s", e)
+                QMessageBox.critical(
+                    self, "Error al guardar", f"No se pudo guardar:\n{e}"
+                )
 
 
 # ====================================================================

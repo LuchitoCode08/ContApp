@@ -46,7 +46,15 @@ ICONOS: dict[str, str] = {
 
 
 class WorkerEjecucion(QThread):
-    """Hilo que ejecuta un proceso sin bloquear la UI."""
+    """Hilo que ejecuta un proceso sin bloquear la UI.
+
+    Robustez:
+        - Captura BaseException (no solo Exception) para que la app nunca
+          se cierre por un error inesperado en el worker.
+        - Loggea con traceback completo antes de emitir la senal ``error``.
+        - Si el usuario pidio ``cancelar()`` (vuelve False en ``isRunning``)
+          se aborta el QThread antes de empezar.
+    """
 
     terminado = Signal(object)  # ResultadoProceso
     error = Signal(str)
@@ -61,16 +69,36 @@ class WorkerEjecucion(QThread):
         self.proceso = proceso
         self.archivos = archivos
         self.modo_prueba = modo_prueba
+        self._cancelado = False
+
+    def cancelar(self) -> None:
+        """Marca el worker como cancelado. El run() lo chequea al inicio."""
+        self._cancelado = True
 
     def run(self) -> None:
+        if self._cancelado:
+            self.error.emit("Ejecucion cancelada antes de iniciar")
+            return
         try:
             resultado = self.proceso.ejecutar(
                 self.archivos, modo_prueba=self.modo_prueba,
             )
+            if self._cancelado:
+                # El proceso termino pero el usuario ya pidio cancelar.
+                return
             self.terminado.emit(resultado)
-        except Exception as e:
-            log().exception("Error en worker: %s", e)
-            self.error.emit(str(e))
+        except BaseException as e:  # noqa: BLE001 - captura defensiva
+            # Loggear con traceback completo a la bitacora.
+            try:
+                log().exception("Error en worker: %s", e)
+            except Exception:
+                pass  # Si el log falla, NO propagar.
+            # Mensaje seguro para la UI.
+            msg = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
+            try:
+                self.error.emit(msg)
+            except Exception:
+                pass
 
 
 class VistaEjecucion(QWidget):
@@ -324,6 +352,14 @@ class VistaEjecucion(QWidget):
         self.btn_ejecutar.setEnabled(True)
 
         if resultado.exito:
+            # Invalidar el cache de "ultimo ejecutado" para que el panel
+            # de Inicio muestre el resultado nuevo al volver.
+            try:
+                from utils.bitacora import invalidar_cache_obtener_ultimo
+                invalidar_cache_obtener_ultimo()
+            except Exception:
+                pass
+
             archivos = resultado.archivos_salida
             self.resultados.mostrar_archivos(archivos)
             self.estado.setText(

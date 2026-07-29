@@ -1,6 +1,11 @@
 # Workflow: correr tests en cada push/PR
+
+# Stack: Python only (no Node).
+# La alerta de Node20 obsoleto en GitHub Actions no aplica a este repo.
 # Rapido (sin build, sin Inno Setup), solo valida la suite de pytest.
 
+# Versions pinned (no tags moviles) para maxima reproducibilidad.
+# Para actualizar: editar este header y commitear.
 name: Tests
 
 on:
@@ -16,10 +21,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5.0.0
 
       - name: Setup Python 3.14
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6.1.0
         with:
           python-version: '3.14'
           cache: 'pip'

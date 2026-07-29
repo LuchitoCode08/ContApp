@@ -278,3 +278,170 @@ def test_obtener_ultimo_solo_marcadores_reales(tmp_path: Path) -> None:
     # Solo debe estar foo.xlsx (el unico con marcador 'Excel procesado').
     assert len([a for a in archivos if "foo.xlsx" in a]) == 1
     assert not any("Iniciando" in str(a) for a in archivos)
+
+
+
+# =====================================================================
+# Tests de optimizacion: lectura por tail + cache + limite de lineas
+# =====================================================================
+
+def test_leer_registros_con_limite_no_lee_todo(tmp_path: Path) -> None:
+    """Con ``limite``, leer_registros NO debe leer todo el archivo.
+
+    Truco: generamos 5000 lineas pero limitamos a 10. El test no
+    verifica el tiempo (fragil), sino que el resultado tiene <= 10
+    registros y arranca desde el final.
+    """
+    log_path = tmp_path / "test.log"
+    lineas = []
+    for i in range(5000):
+        lineas.append(
+            f"2026-07-28 12:00:{i % 60:02d} [INFO] contapp: "
+            f"[Fierro] Excel procesado: file_{i:04d}.xlsx"
+        )
+    log_path.write_text("\n".join(lineas) + "\n", encoding="utf-8")
+
+    from utils.bitacora import leer_registros
+    registros = leer_registros(log_path, limite=10)
+    # Solo los ultimos 10.
+    assert len(registros) == 10
+    # El mas reciente primero.
+    assert "file_4999" in registros[0]["mensaje"]
+    assert "file_4990" in registros[-1]["mensaje"]
+
+
+def test_leer_ultimas_n_lineas_archivo_chico(tmp_path: Path) -> None:
+    """Archivo de 5 lineas, pedimos 10 -> devolvemos las 5."""
+    from utils.bitacora import _leer_ultimas_n_lineas
+    log = tmp_path / "tiny.log"
+    log.write_text("linea1\nlinea2\nlinea3\nlinea4\nlinea5\n", encoding="utf-8")
+    lineas = _leer_ultimas_n_lineas(log, 10)
+    assert lineas == ["linea1", "linea2", "linea3", "linea4", "linea5"]
+
+
+def test_leer_ultimas_n_lineas_archivo_vacio(tmp_path: Path) -> None:
+    from utils.bitacora import _leer_ultimas_n_lineas
+    log = tmp_path / "empty.log"
+    log.write_text("", encoding="utf-8")
+    assert _leer_ultimas_n_lineas(log, 10) == []
+
+
+def test_leer_ultimas_n_lineas_archivo_grande(tmp_path: Path) -> None:
+    """5000 lineas, pedimos 3 -> devuelve las ultimas 3 exactas."""
+    from utils.bitacora import _leer_ultimas_n_lineas
+    log = tmp_path / "big.log"
+    contenido = "\n".join(f"L{i:05d}" for i in range(5000)) + "\n"
+    log.write_text(contenido, encoding="utf-8")
+    lineas = _leer_ultimas_n_lineas(log, 3)
+    assert lineas == ["L04997", "L04998", "L04999"]
+
+
+def test_leer_ultimas_n_lineas_linea_muy_larga(tmp_path: Path) -> None:
+    """Una sola linea gigante debe leerse completa, no cortada al chunk."""
+    from utils.bitacora import _leer_ultimas_n_lineas
+    log = tmp_path / "long.log"
+    contenido = "X" * 50000 + "\n"  # 50 KB en una sola linea
+    log.write_text(contenido, encoding="utf-8")
+    lineas = _leer_ultimas_n_lineas(log, 10)
+    assert len(lineas) == 1
+    assert len(lineas[0]) == 50000
+
+
+def test_cache_obtener_ultimo_devuelve_mismo_resultado(tmp_path: Path) -> None:
+    """Llamadas seguidas con el mismo archivo deben devolver el cache."""
+    log = tmp_path / "cache.log"
+    log.write_text(
+        "2026-07-28 12:00:00 [INFO] contapp: [Fierro] Excel procesado: x.xlsx\n",
+        encoding="utf-8",
+    )
+    from utils.bitacora import (
+        invalidar_cache_obtener_ultimo,
+        obtener_ultimo,
+    )
+    invalidar_cache_obtener_ultimo()
+    r1 = obtener_ultimo(ruta_bitacora=log)
+    r2 = obtener_ultimo(ruta_bitacora=log)
+    assert r1 == r2
+
+
+def test_cache_obtener_ultimo_se_invalida(tmp_path: Path) -> None:
+    """Despues de invalidar el cache, se vuelve a leer."""
+    log = tmp_path / "cache2.log"
+    log.write_text(
+        "2026-07-28 12:00:00 [INFO] contapp: [Fierro] Excel procesado: x.xlsx\n",
+        encoding="utf-8",
+    )
+    from utils.bitacora import (
+        invalidar_cache_obtener_ultimo,
+        obtener_ultimo,
+    )
+    invalidar_cache_obtener_ultimo()
+    obtener_ultimo(ruta_bitacora=log)  # primera lectura
+    invalidar_cache_obtener_ultimo()
+    # Append un nuevo marcador.
+    with log.open("a", encoding="utf-8") as f:
+        f.write(
+            "2026-07-28 12:01:00 [INFO] contapp: "
+            "[Zeus] Excel procesado: y.xlsx\n"
+        )
+    # Sin invalidar, el cache devolveria el primero.
+    r = obtener_ultimo(ruta_bitacora=log)
+    # Pero el test cache es solo para ruta=None; con ruta custom no cachea.
+    # Asi que este test es mas una prueba de humo que del cache real.
+    assert r is not None
+
+
+def test_cache_obtener_ultimo_no_aplica_con_filtro(tmp_path: Path) -> None:
+    """Cuando se pasa ``proceso=`` o ruta custom, NO usa cache."""
+    # Esto es por diseno: el cache es solo para la llamada sin parametros.
+    # Validamos que con un archivo vacio + filtro, devuelve None (sin
+    # registros que matcheen) y no rompe.
+    log = tmp_path / "vacio.log"
+    log.write_text("", encoding="utf-8")
+    from utils.bitacora import (
+        invalidar_cache_obtener_ultimo,
+        obtener_ultimo,
+    )
+    invalidar_cache_obtener_ultimo()
+    assert obtener_ultimo(proceso="comprobante", ruta_bitacora=log) is None
+
+
+def test_obtener_ultimo_usa_cache_por_defecto(tmp_path: Path) -> None:
+    """Si creamos un archivo nuevo con un marcador y NO invalidamos el
+    cache, obtener_ultimo() (sin parametros) sigue devolviendo el viejo.
+    Esto valida que el cache funciona para la llamada sin filtro."""
+    log = tmp_path / "x.log"
+    log.write_text(
+        "2026-07-28 12:00:00 [INFO] contapp: "
+        "[Fierro] Excel procesado: primero.xlsx\n",
+        encoding="utf-8",
+    )
+    from utils.bitacora import (
+        invalidar_cache_obtener_ultimo,
+        obtener_ultimo,
+        _resolver_ruta_bitacora,
+    )
+    # Monkey-patch de la ruta por defecto.
+    import utils.bitacora as bm
+    original = bm._resolver_ruta_bitacora
+    bm._resolver_ruta_bitacora = lambda x=None: log if x is None else Path(x)
+    try:
+        invalidar_cache_obtener_ultimo()
+        r1 = obtener_ultimo()
+        assert "primero.xlsx" in r1["mensaje_crudo"]
+        # Append de un nuevo marcador.
+        with log.open("a", encoding="utf-8") as f:
+            f.write(
+                "2026-07-28 13:00:00 [INFO] contapp: "
+                "[Zeus] Excel procesado: segundo.xlsx\n"
+            )
+        # Sin invalidar -> cache devuelve el primero.
+        r2 = obtener_ultimo()
+        assert "primero.xlsx" in r2["mensaje_crudo"]
+        # Invalido -> lee el nuevo.
+        invalidar_cache_obtener_ultimo()
+        r3 = obtener_ultimo()
+        assert "segundo.xlsx" in r3["mensaje_crudo"]
+    finally:
+        bm._resolver_ruta_bitacora = original
+

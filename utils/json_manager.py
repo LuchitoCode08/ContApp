@@ -4,6 +4,8 @@ Responsabilidades:
 - Leer y escribir JSONs.
 - Hacer backup automatico antes de cada escritura (con timestamp).
 - Detectar la estructura (Tipo A/B/C/D) para que el editor muestre la vista adecuada.
+- Locks por archivo para evitar race conditions entre el editor y los
+  procesos en runtime.
 """
 from __future__ import annotations
 
@@ -112,3 +114,113 @@ def detectar_tipo(datos: dict) -> str:
 
     # Default conservador.
     return TIPO_A
+
+
+
+# ====================================================================
+# Locks por archivo (proteccion contra race conditions)
+# ====================================================================
+# Cuando el usuario edita un JSON mientras un proceso esta corriendo,
+# podemos evitar pisar el archivo. Los procesos mismos cargan los JSONs
+# en memoria en su __init__, asi que NO usan locks.
+#
+# Mecanismo: archivo .lock al lado del JSON. Si el archivo .lock existe
+# y es nuestro -> podemos escribir. Si no existe -> alguien mas tiene
+# el lock y debemos esperar o rechazar.
+# ====================================================================
+
+# Prefijo para los archivos de lock.
+LOCK_SUFIJO = ".lock"
+
+
+def ruta_lock(ruta_json: Path | str) -> Path:
+    """Devuelve la ruta del archivo .lock asociado al JSON."""
+    ruta = Path(ruta_json)
+    return ruta.with_name(ruta.name + LOCK_SUFIJO)
+
+
+def lock_adquirido(ruta_json: Path | str) -> bool:
+    """True si el archivo .lock existe Y somos duenos."""
+    ruta_lock_ = ruta_lock(ruta_json)
+    if not ruta_lock_.exists():
+        return False
+    # Si somos duenos, podemos sobrescribir nuestro propio lock.
+    # Para mantenerlo simple, devolvemos True solo si somos duenos.
+    try:
+        contenido = ruta_lock_.read_text(encoding="utf-8").strip()
+    except OSError:
+        return False
+    import getpass
+    import os
+    usuario = os.environ.get("USERNAME") or getpass.getuser()
+    return contenido == usuario
+
+
+def adquirir_lock(ruta_json: Path | str) -> Path | None:
+    """Intenta adquirir el lock sobre el JSON.
+
+    Devuelve la ruta del .lock si lo adquirimos. None si ya estaba
+    tomado por otro usuario/proceso.
+
+    El lock se crea con el nombre del usuario actual adentro, asi
+    procesos paralelos del mismo usuario pueden compartirlo.
+    """
+    ruta_lock_ = ruta_lock(ruta_json)
+    import getpass
+    import os
+    usuario = os.environ.get("USERNAME") or getpass.getuser()
+    try:
+        # Crear exclusivamente (falla si ya existe).
+        with ruta_lock_.open("x", encoding="utf-8") as f:
+            f.write(usuario)
+        return ruta_lock_
+    except FileExistsError:
+        # Ya existe. Ver si es nuestro.
+        if lock_adquirido(ruta_json):
+            return ruta_lock_
+        return None
+    except OSError:
+        return None
+
+
+def liberar_lock(ruta_o_lock: Path | str) -> bool:
+    """Libera el lock. Devuelve True si se libero, False si no estaba nuestro."""
+    ruta_lock_ = Path(ruta_o_lock)
+    if not ruta_lock_.name.endswith(LOCK_SUFIJO):
+        # Si nos pasaron la ruta del JSON, derivar la del lock.
+        ruta_lock_ = ruta_lock(ruta_o_lock)
+    try:
+        # lock_adquirido espera la ruta del JSON, no la del .lock.
+        ruta_json = ruta_lock_.with_name(ruta_lock_.name[: -len(LOCK_SUFIJO)])
+        if lock_adquirido(ruta_json):
+            ruta_lock_.unlink()
+            return True
+    except OSError:
+        pass
+    return False
+
+
+def con_lock(ruta_json: Path | str):
+    """Context manager que adquiere lock, ejecuta el bloque, libera.
+
+    Ejemplo:
+        with con_lock("data/jsons/fierro/mapeo.json") as lock_path:
+            if lock_path is None:
+                raise RuntimeError("No se pudo obtener el lock")
+            escribir_json(ruta_json, datos)
+
+    Si no se pudo adquirir el lock, ``lock_path`` es None y NO se
+    ejecuta el bloque.
+    """
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _ctx():
+        lock = adquirir_lock(ruta_json)
+        try:
+            yield lock
+        finally:
+            if lock is not None:
+                liberar_lock(lock)
+
+    return _ctx()
