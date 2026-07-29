@@ -19,18 +19,53 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# Raiz del proyecto (donde esta main.py).
-RAIZ: Path = Path(__file__).resolve().parent.parent
+
+def _detectar_raiz() -> Path:
+    """Devuelve la raiz del proyecto según el contexto de ejecucion.
+
+    - En desarrollo (corriendo ``python main.py``): directorio donde esta
+      ``main.py`` (2 niveles arriba de ``app/config.py``).
+    - Empaquetado con PyInstaller (``--onedir`` o ``--onefile``): directorio
+      donde esta el ejecutable. Asi ``jsons/`` queda al lado del .exe,
+      que es lo que queremos para que el usuario pueda editar las reglas
+      sin recompilar.
+
+    Detecta el caso empaquetado con ``getattr(sys, "frozen", False)``,
+    que PyInstaller setea automaticamente.
+    """
+    if getattr(sys, "frozen", False):
+        # Ejecutandose como .exe -> el "raiz" es donde esta el binario.
+        return Path(sys.executable).resolve().parent
+    # Desarrollo: 2 niveles arriba de app/config.py -> raiz del proyecto.
+    return Path(__file__).resolve().parent.parent
+
+
+# Raiz del proyecto.
+RAIZ: Path = _detectar_raiz()
 
 # Carpetas importantes (relativas a la raiz).
 DOCUMENTS: Path = Path.home() / "Documents"
-DATA_DIR: Path = RAIZ / "data"
 JSONS_DIR: Path = RAIZ / "jsons"
 RESULTADOS_DIR: Path = DOCUMENTS / "ContApp_Resultados"
-LOG_DIR: Path = RAIZ / "log"
+
+
+def _data_dir() -> Path:
+    """Directorio de estado (data/). Tests pueden monkey-patchear esta funcion."""
+    return RAIZ / "data"
+
+
+def _log_dir() -> Path:
+    """Directorio de logs (log/). Tests pueden monkey-patchear esta funcion."""
+    return RAIZ / "log"
+
+
+# Aliases para compatibilidad con el codigo existente.
+DATA_DIR: Path = _data_dir()
+LOG_DIR: Path = _log_dir()
 BITACORA_DIR: Path = LOG_DIR
 BITACORA_LOG: Path = LOG_DIR / "bitacora.log"
 
@@ -83,9 +118,12 @@ class Config:
 
         No lanza excepciones: si no se puede escribir, la app sigue
         funcionando, solo no se persiste entre sesiones.
+
+        Usa ``PREFERENCIAS.parent`` (no la constante ``DATA_DIR``) para que
+        monkey-patching de ``PREFERENCIAS`` en tests funcione correctamente.
         """
         try:
-            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            PREFERENCIAS.parent.mkdir(parents=True, exist_ok=True)
             data = {
                 "usuario": self.usuario,
                 "modo_prueba": self.modo_prueba,

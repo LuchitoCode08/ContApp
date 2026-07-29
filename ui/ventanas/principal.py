@@ -19,7 +19,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, Qt, Signal
+from PySide6.QtCore import QEvent, Qt, QTimer, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QApplication,
@@ -39,6 +39,8 @@ from PySide6.QtWidgets import (
 )
 
 from app.config import get_config
+from app.version import __version__
+from app.updater.checker import UpdaterChecker
 from ui.recursos.tema import (
     CLARO,
     ESPACIO_MD,
@@ -49,6 +51,7 @@ from ui.recursos.tema import (
     aplicar_tema,
     tema_actual,
 )
+from ui.ventanas.dialogo_actualizacion import DialogoActualizacion
 from ui.widgets.banner_modo_prueba import BannerModoPrueba
 from ui.widgets.switch_modo_prueba import SwitchModoPrueba
 from ui.widgets.tarjeta_proceso import TarjetaProceso
@@ -384,7 +387,7 @@ class VentanaPrincipal(QMainWindow):
         sidebar_layout.addWidget(self.sidebar, 1)
 
         # Versión abajo del sidebar.
-        version_lbl = QLabel("v1.0 · Fase 4")
+        version_lbl = QLabel(f"v{__version__}")
         version_lbl.setObjectName("version_label")
         version_lbl.setStyleSheet(
             f"color: {_p_inicial.fg_muted}; font-size: 10px;"
@@ -450,6 +453,14 @@ class VentanaPrincipal(QMainWindow):
         footer = QHBoxLayout(footer_container)
         footer.setContentsMargins(16, 8, 16, 8)
         footer.addWidget(self.switch)
+        footer.addSpacing(12)
+        # Boton "Buscar actualizacion" (icono + tooltip).
+        self.btn_actualizar = QPushButton("🔄  Actualizar")
+        self.btn_actualizar.setObjectName("ghost")
+        self.btn_actualizar.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_actualizar.setToolTip("Buscar nueva version en GitHub")
+        self.btn_actualizar.clicked.connect(self._chequear_actualizacion_manual)
+        footer.addWidget(self.btn_actualizar)
         footer.addStretch()
         self._usuario_label = QLabel(f"  👤  {self._cfg.usuario}")
         self._usuario_label.setStyleSheet(
@@ -477,6 +488,11 @@ class VentanaPrincipal(QMainWindow):
         # reabre, el sidebar_container queda con stylesheet vacio (fondo
         # heredado del sistema = blanco/claro).
         self._aplicar_tema(_paleta())
+
+        # Chequeo de actualizacion al iniciar (silencioso).
+        self._updater_checker: UpdaterChecker | None = None
+        self._updater_dialogo: DialogoActualizacion | None = None
+        QTimer.singleShot(1500, self._chequear_actualizacion_al_inicio)
 
     # -- Tema ---------------------------------------------------------
 
@@ -600,3 +616,61 @@ class VentanaPrincipal(QMainWindow):
             "Modo prueba activado" if activo else "Modo produccion",
             3000,
         )
+
+    # -- Actualizacion ------------------------------------------------
+
+    def _chequear_actualizacion_al_inicio(self) -> None:
+        """Lanza un UpdaterChecker en background al arrancar la app.
+
+        Es silencioso: si NO hay update, no pasa nada visible.
+        Si hay update, muestra un dialogo modal.
+        Si falla la red, no muestra nada (la app sigue funcionando).
+        """
+        self._lanzar_checker(mostrar_si_no_hay=False)
+
+    def _chequear_actualizacion_manual(self) -> None:
+        """Handler del boton 'Actualizar' del footer."""
+        self.btn_actualizar.setEnabled(False)
+        self.statusBar().showMessage("Buscando actualizaciones...", 0)
+        self._lanzar_checker(mostrar_si_no_hay=True)
+
+    def _lanzar_checker(self, mostrar_si_no_hay: bool) -> None:
+        """Arranca el UpdaterChecker conectando las senales."""
+        # Si ya hay uno corriendo, ignorar.
+        if self._updater_checker is not None and self._updater_checker.isRunning():
+            return
+        self._updater_checker = UpdaterChecker(version_actual=__version__)
+        self._updater_checker.terminado.connect(self._on_checker_terminado)
+        self._updater_checker.error.connect(self._on_checker_error)
+        self._updater_checker._mostrar_si_no_hay = mostrar_si_no_hay  # type: ignore[attr-defined]
+        self._updater_checker.start()
+
+    def _on_checker_terminado(self, release) -> None:
+        self.btn_actualizar.setEnabled(True)
+        self.statusBar().clearMessage()
+        if release is None:
+            mostrar = getattr(self._updater_checker, "_mostrar_si_no_hay", False)
+            if mostrar:
+                QMessageBox.information(
+                    self,
+                    "Sin actualizaciones",
+                    f"Estas al dia. Version actual: v{__version__}",
+                )
+            return
+        # Hay update -> abrir dialogo.
+        from app.version import APP_NAME
+        destino = Path.home() / "Downloads" / f"{APP_NAME}-setup.zip"
+        self._updater_dialogo = DialogoActualizacion(release, destino, parent=self)
+        self._updater_dialogo.show()
+
+    def _on_checker_error(self, msg: str) -> None:
+        log().warning("Updater: %s", msg)
+        self.btn_actualizar.setEnabled(True)
+        self.statusBar().clearMessage()
+        mostrar = getattr(self._updater_checker, "_mostrar_si_no_hay", False)
+        if mostrar:
+            QMessageBox.warning(
+                self,
+                "No se pudo verificar",
+                f"No se pudo consultar GitHub:\n{msg}",
+            )

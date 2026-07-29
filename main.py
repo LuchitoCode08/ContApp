@@ -103,9 +103,9 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    # Bitacora: archivo en data/bitacora/bitacora.log
-    log_path = RAIZ / "data" / "bitacora" / "bitacora.log"
-    configurar_bitacora(log_path)
+    # Bitacora: ruta resuelta por config (respeta frozen/onedir).
+    from app.config import BITACORA_LOG
+    configurar_bitacora(BITACORA_LOG)
 
     if args.cli:
         # Modo CLI.

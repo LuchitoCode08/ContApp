@@ -45,10 +45,21 @@ Switch de **modo prueba**, nombre de **usuario activo** y selector de **tema** (
 Demo/
 ├── main.py                      # Entry point (lanza la QApplication)
 ├── requirements.txt
+├── ContApp.spec                 # PyInstaller spec (--onedir, console=False)
+├── ContApp.iss                  # Inno Setup script (instalador .exe)
+├── .github/
+│   └── workflows/
+│       ├── tests.yml            # CI: tests en cada PR
+│       └── release.yml          # CD: build + release al pushear tag v*
 │
 ├── app/                         # Configuración y arranque
 │   ├── __init__.py
-│   └── config.py                # Singleton Config (rutas, usuario, modo_prueba, tema)
+│   ├── config.py                # Singleton Config (rutas, usuario, modo_prueba, tema)
+│   ├── version.py               # __version__ (single source of truth)
+│   └── updater/                 # Sistema de auto-actualizacion
+│       ├── version_utils.py     # semver, parsear_release
+│       ├── checker.py           # UpdaterChecker (QThread)
+│       └── downloader.py        # UpdaterDownloader (QThread)
 │
 ├── procesos/                    # Lógica de los 3 procesos + receta base
 │   ├── __init__.py
@@ -61,6 +72,7 @@ Demo/
 │   ├── ventanas/                # Pantallas principales
 │   │   ├── principal.py         # VentanaPrincipal + PantallaInicio
 │   │   ├── ejecutar_proceso.py  # PantallaProcesos (grid + ejecución)
+│   │   ├── dialogo_actualizacion.py  # Modal de actualizacion (UpdaterDownloader)
 │   │   └── (otros…)
 │   ├── widgets/                 # Componentes reutilizables
 │   │   ├── drop_zone.py
@@ -89,7 +101,19 @@ Demo/
 │   ├── bitacora.log             # Log automático (rotación por fecha)
 │   └── BITACORA.md              # Bitácora de la sesión actual
 │
-└── tests/                       # 93 tests (pytest)
+└── tests/                       # 153 tests (pytest)
+    ├── test_archivos.py
+    ├── test_bitacora.py
+    ├── test_comprobante_e2e.py
+    ├── test_fierro_e2e.py
+    ├── test_zeus_e2e.py         # 4 saltados mientras EN_DESARROLLO=True
+    ├── test_json_manager.py
+    ├── test_config_persistencia.py
+    ├── test_config_paths.py     # sys.frozen, RAIZ, JSONS_DIR
+    ├── test_version_utils.py    # semver, comparacion, parsear_release
+    ├── test_updater_checker.py  # UpdaterChecker + URL mockeada
+    ├── test_updater_downloader.py  # UpdaterDownloader + chunks
+    └── test_smoke.py
     ├── test_smoke.py
     ├── test_archivos.py
     ├── test_bitacora.py
@@ -135,20 +159,85 @@ La primera vez que se ejecuta crea `data/usuario.json` automáticamente (tema, m
 python -m pytest
 ```
 
-Estado actual: **89 passed, 4 skipped** (los 4 skipped son los tests de ejecución de Zeus, mientras `EN_DESARROLLO=True`).
+Estado actual: **153 passed, 4 skipped** (los 4 skipped son los tests de ejecución de Zeus, mientras `EN_DESARROLLO=True`).
 
-## Empaquetado (.exe)
+## Empaquetado y release
 
-```powershell
-pyinstaller --noconfirm --onefile --windowed --name ContApp main.py
+El proyecto se empaqueta con **PyInstaller** (modo `--onedir`) y se distribuye con un instalador generado por **Inno Setup**. Hay un workflow de GitHub Actions que automatiza todo el pipeline.
+
+### Pipeline
+
+```
+tag v1.0.1
+    │
+    ▼
+GitHub Actions (.github/workflows/release.yml)
+    │
+    ├─ PyInstaller  ──►  dist/ContApp/      (bundle con .exe + DLLs + jsons/)
+    │
+    └─ Inno Setup   ──►  dist/ContApp_Setup-1.0.1.exe  (instalador)
+                       └►  dist/ContApp-1.0.1-portable.zip  (alternativa)
+    │
+    ▼
+GitHub Release con los 2 assets
 ```
 
-El `.exe` queda en `dist/ContApp.exe`.
+### Build local
+
+**1) Instalar Inno Setup** (solo Windows): [jrsoftware.org/isinfo.php](https://jrsoftware.org/isinfo.php).
+
+**2) Build del bundle:**
+```powershell
+pyinstaller --clean ContApp.spec
+```
+Resultado: `dist/ContApp/ContApp.exe` + `dist/ContApp/_internal/` (170 MB total).
+
+**3) Build del instalador:**
+```powershell
+iscc /DMyAppVersion=1.0.0 ContApp.iss
+```
+Resultado: `dist/ContApp_Setup-1.0.0.exe` (instalador para distribuir).
+
+**4) Distribuir:**
+- **Instalador** (recomendado): `dist/ContApp_Setup-1.0.0.exe` — crea acceso directo en Menú Inicio, registra desinstalador.
+- **Portable**: comprimir `dist/ContApp/` en un .zip — útil para usuarios avanzados o pruebas.
+
+### Release automático
+
+```powershell
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+El workflow `release.yml` se dispara solo con tags `v*.*.*`. Lee la versión de `app/version.py` y rechaza el tag si no coincide. Genera un **draft release** en GitHub con el instalador y la versión portable como assets.
+
+### Estructura del bundle
+
+```
+dist/ContApp/
+├── ContApp.exe             # Ejecutable (9 MB)
+├── _internal/              # DLLs + modulos Python + dependencias (160 MB)
+└── jsons/                  # JSONs editables (FOAPAL, NIT, auxiliares, etc.)
+    ├── comprobante/
+    ├── fierro/
+    └── zeus/
+```
+
+**Importante**: `jsons/` se distribuye **al lado del .exe** (no dentro de `_internal/`) para que el usuario pueda editarlos desde la app sin recompilar. El instalador los copia en `data/` con permisos de escritura para el usuario.
+
+### Auto-actualización desde la app
+
+La propia app puede verificar si hay una versión nueva:
+
+- Al iniciar (silencioso): chequea GitHub API; si hay update, abre un diálogo modal.
+- Botón "🔄 Actualizar" en el footer: chequeo manual con feedback inmediato.
+
+Ver `app/updater/` para la implementación. El updater consulta `https://api.github.com/repos/LuchitoCode08/Demo/releases/latest` (gratis, sin auth, ~60 requests/hora por IP).
 
 ## Estado
 
 - ✅ Fase 1 — Preparación del entorno
 - ✅ Fase 2 — Núcleo de la app (lógica pura, sin UI)
 - ✅ Fase 3 — Interfaz gráfica (PySide6, 4 pantallas, tema claro/oscuro, badge EN DESARROLLO)
-- ✅ Fase 4 — Pruebas y ajustes (93 tests, persistencia, modo prueba, botón secundario)
-- ⏳ Fase 5 — Empaquetado con PyInstaller
+- ✅ Fase 4 — Pruebas y ajustes (153 tests, persistencia, modo prueba, botón secundario)
+- ✅ Fase 5 — Empaquetado y release (PyInstaller + Inno Setup + GitHub Actions + auto-updater)
