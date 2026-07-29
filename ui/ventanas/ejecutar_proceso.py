@@ -1,4 +1,4 @@
-"""Pantalla Procesos: ejecutar cualquiera de los 3 procesos desde la UI.
+﻿"""Pantalla Procesos: ejecutar cualquiera de los 3 procesos desde la UI.
 
 Flujo:
     1. Vista GRID: muestra tarjetas con los procesos disponibles.
@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -86,9 +87,18 @@ class VistaEjecucion(QWidget):
         self._construir_ui()
 
     def _construir_ui(self) -> None:
+        # Layout principal: SOLO aloja al QScrollArea (sin margenes).
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 20, 24, 20)
-        layout.setSpacing(14)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # Contenedor scrollable: todo el contenido vive aca adentro.
+        self.contenedor = QWidget()
+        self.contenedor.setObjectName("VistaEjecucionContenedor")
+        self.contenedor.setMinimumWidth(560)
+        cont_layout = QVBoxLayout(self.contenedor)
+        cont_layout.setContentsMargins(24, 20, 24, 20)
+        cont_layout.setSpacing(14)
 
         # --- Header con boton "Volver" + nombre del proceso ---------
         volver_row = QHBoxLayout()
@@ -102,7 +112,7 @@ class VistaEjecucion(QWidget):
         self.btn_volver.clicked.connect(self.proceso_cambiado.emit)
         volver_row.addWidget(self.btn_volver)
         volver_row.addStretch()
-        layout.addLayout(volver_row)
+        cont_layout.addLayout(volver_row)
 
         titulo_row = QHBoxLayout()
         self._icono_label = QLabel("▶")
@@ -116,28 +126,24 @@ class VistaEjecucion(QWidget):
         )
         titulo_row.addWidget(self._titulo)
         titulo_row.addStretch()
-        layout.addLayout(titulo_row)
+        cont_layout.addLayout(titulo_row)
 
-        # Descripcion.
         self._desc = QLabel("")
         self._desc.setWordWrap(True)
-        layout.addWidget(self._desc)
+        cont_layout.addWidget(self._desc)
 
-        # --- DropZone -------------------------------------------------
         self.drop_zone = DropZone(
-            mensaje="Arrastra el archivo aquí o haz clic en Examinar",
+            mensaje="Arrastra el archivo aqui o haz clic en Examinar",
         )
         self.drop_zone.archivos_seleccionados.connect(self._agregar_archivos)
-        layout.addWidget(self.drop_zone)
+        cont_layout.addWidget(self.drop_zone)
 
-        # --- Lista de archivos ---------------------------------------
         self._lbl_archivos = QLabel("ARCHIVOS CARGADOS")
-        layout.addWidget(self._lbl_archivos)
+        cont_layout.addWidget(self._lbl_archivos)
         self.lista = QListWidget()
-        self.lista.setMaximumHeight(120)
-        layout.addWidget(self.lista)
+        self.lista.setMaximumHeight(100)
+        cont_layout.addWidget(self.lista)
 
-        # --- Botones ------------------------------------------------
         btn_row = QHBoxLayout()
         self.btn_quitar = QPushButton("Quitar último")
         self.btn_quitar.clicked.connect(self._quitar_ultimo)
@@ -151,29 +157,36 @@ class VistaEjecucion(QWidget):
         btn_row.addWidget(self.btn_limpiar)
         btn_row.addStretch()
         btn_row.addWidget(self.btn_ejecutar)
-        layout.addLayout(btn_row)
+        cont_layout.addLayout(btn_row)
 
-        # --- Progreso / estado --------------------------------------
         self.progress = QProgressBar()
         self.progress.setRange(0, 0)
         self.progress.hide()
-        layout.addWidget(self.progress)
+        cont_layout.addWidget(self.progress)
         self.estado = QLabel("")
-        layout.addWidget(self.estado)
+        cont_layout.addWidget(self.estado)
 
-        # Separador.
         self.sep = QFrame()
         self.sep.setFrameShape(QFrame.Shape.HLine)
-        layout.addWidget(self.sep)
+        cont_layout.addWidget(self.sep)
 
-        # --- Tabla de resultados -------------------------------------
         self._lbl_result = QLabel("ARCHIVOS GENERADOS")
-        layout.addWidget(self._lbl_result)
+        cont_layout.addWidget(self._lbl_result)
         self.resultados = TablaResultados()
-        layout.addWidget(self.resultados, 1)
+        cont_layout.addWidget(self.resultados)
+
+        self.scroll = QScrollArea()
+        self.scroll.setObjectName("VistaEjecucionScroll")
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll.setWidget(self.contenedor)
+        layout.addWidget(self.scroll)
 
         self._actualizar_estado()
-        self._aplicar_tema(self._tema_actual())  # aplica colores iniciales
+        self._aplicar_tema(self._tema_actual())
 
     def _tema_actual(self):
         from ui.recursos.tema import _paleta
@@ -201,6 +214,12 @@ class VistaEjecucion(QWidget):
         self._lbl_result.setStyleSheet(
             f"color: {paleta.fg_muted}; font-size: 11px; font-weight: 700;"
             " letter-spacing: 1.5px;"
+        )
+        self.scroll.setStyleSheet(
+            f"QScrollArea {{ background-color: {paleta.bg};"
+            f" border: none; }}"
+            f" QScrollArea > QWidget > QWidget"
+            f" {{ background-color: transparent; }}"
         )
         # Si hay un proceso configurado, reaplicar el acento del titulo.
         if self._nombre_proceso:
