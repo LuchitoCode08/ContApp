@@ -44,7 +44,12 @@ AppPublisher=LuchitoCode08
 AppPublisherURL=https://github.com/LuchitoCode08/Demo
 AppSupportURL=https://github.com/LuchitoCode08/Demo/issues
 AppUpdatesURL=https://github.com/LuchitoCode08/Demo/releases
-AppDescription={#MyAppDescription}
+; Inno Setup 6.x NO reconoce la directiva ``AppDescription`` en
+; ``[Setup]``. La descripcion se setea via ``AppComments`` (que aparece
+; en el panel de "Agregar o quitar programas" de Windows) o via
+; ``VersionInfoDescription`` (metadata del .exe). Usamos AppComments
+; que es la que el usuario ve al desinstalar.
+AppComments={#MyAppDescription}
 AppCopyright=Copyright (C) 2026
 
 ; Salidas.
