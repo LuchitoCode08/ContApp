@@ -18,13 +18,14 @@ import zipfile
 from datetime import datetime
 from io import StringIO
 from pathlib import Path
+from typing import Callable
 
 import pandas as pd
 from dateutil.relativedelta import relativedelta
 from openpyxl import Workbook
 
 from app.config import RESULTADOS_DIR
-from procesos.base import ProcesoBase, ResultadoProceso
+from procesos.base import ProcesoBase, ProcesoCancelado, ResultadoProceso
 from utils.archivos import carpeta_modo_prueba, carpeta_resultados
 from utils.bitacora import log
 from utils.json_manager import leer_json
@@ -355,6 +356,8 @@ class ProcesoComprobante(ProcesoBase):
     def _aplicar_foapal(
         self, df_conceptos: pd.DataFrame, carpeta: Path,
         *, modo_prueba: bool = False,
+        progreso: Callable[[int, int], None] | None = None,
+        cancelado: Callable[[], bool] | None = None,
     ) -> Path | None:
         if df_conceptos.empty:
             log().info("%s No hay datos para aplicar FOAPAL.", self.LOG_PREFIX)
@@ -377,7 +380,24 @@ class ProcesoComprobante(ProcesoBase):
             creditos = self.foapal_config.get("creditos", {})
             debitos = self.foapal_config.get("debitos", {})
             filas: list[list] = []
-            for _, fila in df.iterrows():
+            total = len(df)
+            paso = max(1, total // 100)  # Emitir progreso cada 1%
+            # Chequeo de cancelacion al inicio del loop (safety para
+            # archivos con < 100 filas) + cada 100 filas (latencia
+            # maxima ~50-100ms, despreciable).
+            if cancelado and total > 0 and cancelado():
+                log().info("%s FOAPAL cancelado antes de iniciar.", self.LOG_PREFIX)
+                raise ProcesoCancelado()
+            for i, (_, fila) in enumerate(df.iterrows()):
+                if cancelado and i > 0 and i % 100 == 0 and cancelado():
+                    log().info(
+                        "%s FOAPAL cancelado en fila %d/%d.",
+                        self.LOG_PREFIX, i, total,
+                    )
+                    raise ProcesoCancelado()
+                # Reportar avance cada 1% (o al menos cada fila si total<100).
+                if progreso and i > 0 and i % paso == 0:
+                    progreso(i, total)
                 clave_concepto = str(fila.iloc[COL_CODIGO_CONCEPTO]).strip()
                 foapal_info = creditos.get(clave_concepto) or debitos.get(clave_concepto)
                 if foapal_info is None:
@@ -444,6 +464,10 @@ class ProcesoComprobante(ProcesoBase):
                 self.LOG_PREFIX, ruta_foapal, sufijo,
             )
             return ruta_foapal
+        except ProcesoCancelado:
+            # La cancelacion cooperativa debe propagarse al Worker,
+            # NO se convierte en error generico.
+            raise
         except Exception as e:
             log().error("%s Error aplicando FOAPAL: %s", self.LOG_PREFIX, e)
             return None
@@ -455,6 +479,9 @@ class ProcesoComprobante(ProcesoBase):
         self,
         archivos: list[Path],
         modo_prueba: bool = False,
+        *,
+        progreso: Callable[[int, int], None] | None = None,
+        cancelado: Callable[[], bool] | None = None,
     ) -> ResultadoProceso:
         log().info(
             "%s Iniciando (modo_prueba=%s)",
@@ -486,7 +513,10 @@ class ProcesoComprobante(ProcesoBase):
         except Exception as e:
             return ResultadoProceso(exito=False, mensaje=f"No se pudo escribir el Excel: {e}")
 
-        ruta_foapal = self._aplicar_foapal(por_conceptos, carpeta, modo_prueba=modo_prueba)
+        ruta_foapal = self._aplicar_foapal(
+            por_conceptos, carpeta, modo_prueba=modo_prueba,
+            progreso=progreso, cancelado=cancelado,
+        )
 
         archivos_generados: list[Path] = [ruta_excel]
         if ruta_foapal is not None:

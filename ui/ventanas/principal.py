@@ -497,13 +497,36 @@ class VentanaPrincipal(QMainWindow):
     # -- Tema ---------------------------------------------------------
 
     def _toggle_tema(self) -> None:
-        """Cambia entre tema claro y oscuro."""
+        """Cambia entre tema claro y oscuro (con debounce).
+
+        En vez de aplicar el tema inmediatamente, agendamos la aplicacion
+        con un QTimer de 100ms. Si el usuario togglea el tema varias veces
+        seguidas (caso comun: doble click accidental o spam), las llamadas
+        se acumulan en un solo repaint al final del debounce. Esto evita
+        que ``aplicar_tema()`` (que recorre TODOS los widgets de la app)
+        se ejecute multiples veces en pocos milisegundos.
+        """
         nuevo = "oscuro" if tema_actual() == "claro" else "claro"
-        aplicar_tema(QApplication.instance(), nuevo)
-        self._actualizar_btn_tema()
-        # Persistir el tema elegido en disco.
+        # Persistir INMEDIATAMENTE para no perder el cambio si la app
+        # se cierra dentro de la ventana del debounce.
         self._cfg.tema = nuevo
         self._cfg.guardar_preferencias()
+        # Agendar la aplicacion visual con debounce.
+        if not hasattr(self, "_tema_timer") or self._tema_timer is None:
+            self._tema_timer = QTimer(self)
+            self._tema_timer.setSingleShot(True)
+            self._tema_timer.setInterval(100)
+            self._tema_timer.timeout.connect(self._aplicar_tema_diferido)
+        self._tema_modo_pendiente = nuevo
+        self._tema_timer.start()  # Reinicia si ya estaba corriendo.
+
+    def _aplicar_tema_diferido(self) -> None:
+        """Ejecutado por ``_tema_timer.timeout``: aplica el tema pendiente."""
+        nuevo = getattr(self, "_tema_modo_pendiente", None)
+        if nuevo is None:
+            return
+        aplicar_tema(QApplication.instance(), nuevo)
+        self._actualizar_btn_tema()
         self.statusBar().showMessage(
             f"Tema {nuevo} activado", 2000,
         )

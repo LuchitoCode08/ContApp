@@ -10,7 +10,18 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import ClassVar
+from typing import Callable, ClassVar
+
+
+class ProcesoCancelado(Exception):
+    """Excepcion que cualquier subclase de ProcesoBase puede ``raise``
+    para abortar cooperativamente una ejecucion larga.
+
+    El ``WorkerEjecucion`` la captura y emite ``error("Ejecucion
+    cancelada por el usuario")`` + la loggea. Se lanza en cualquier
+    loop interno del proceso cuando el callback ``cancelado`` retorna
+    True.
+    """
 
 
 @dataclass
@@ -76,6 +87,9 @@ class ProcesoBase(ABC):
         self,
         archivos: list[Path],
         modo_prueba: bool = False,
+        *,
+        progreso: Callable[[int, int], None] | None = None,
+        cancelado: Callable[[], bool] | None = None,
     ) -> ResultadoProceso:
         """Ejecuta el proceso.
 
@@ -83,6 +97,16 @@ class ProcesoBase(ABC):
             archivos: archivos validados que serviran de entrada.
             modo_prueba: si True, escribe a carpetas temporales sin tocar
                 los originales.
+            progreso: callback opcional ``(actual, total)`` para reportar
+                avance al UI. Si se provee, el proceso lo llama cuando
+                completa unidades de trabajo (filas procesadas, chunks
+                escritos, etc.). Los argumentos son enteros >= 0.
+                Si ``progreso`` es ``None`` (caso tests / CLI), se ignora
+                y el proceso corre como antes.
+            cancelado: callback opcional ``() -> bool`` que el proceso
+                chequea periodicamente en loops largos. Si retorna
+                ``True``, el proceso debe ``raise ProcesoCancelado()``
+                para abortar la ejecucion.
 
         Returns:
             ResultadoProceso con el resultado de la ejecucion.

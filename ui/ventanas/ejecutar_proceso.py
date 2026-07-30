@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.config import get_config
-from procesos.base import ProcesoBase, ResultadoProceso
+from procesos.base import ProcesoBase, ProcesoCancelado, ResultadoProceso
 from ui.widgets.drop_zone import DropZone
 from ui.widgets.tabla_resultados import TablaResultados
 from ui.widgets.tarjeta_proceso import TarjetaProceso
@@ -54,10 +54,16 @@ class WorkerEjecucion(QThread):
         - Loggea con traceback completo antes de emitir la senal ``error``.
         - Si el usuario pidio ``cancelar()`` (vuelve False en ``isRunning``)
           se aborta el QThread antes de empezar.
+
+    Signals:
+        terminado: emite ``ResultadoProceso`` al terminar OK.
+        error: emite un mensaje de error al fallar.
+        progreso: emite el porcentaje (0..100) en cada avance.
     """
 
     terminado = Signal(object)  # ResultadoProceso
     error = Signal(str)
+    progreso = Signal(int)       # 0..100
 
     def __init__(
         self,
@@ -70,23 +76,69 @@ class WorkerEjecucion(QThread):
         self.archivos = archivos
         self.modo_prueba = modo_prueba
         self._cancelado = False
+        # Dedup del signal progreso: solo emitimos si el pct cambia.
+        self._ultimo_pct = -1
 
     def cancelar(self) -> None:
         """Marca el worker como cancelado. El run() lo chequea al inicio."""
         self._cancelado = True
+
+    def _emit_progreso_cb(self, actual: int, total: int) -> None:
+        """Callback que el worker pasa al proceso como ``progreso``.
+
+        Convierte ``(actual, total)`` a un porcentaje 0..100 y emite
+        ``self.progreso(pct)`` solo si cambio (dedup). El proceso
+        recibe siempre la misma funcion; el worker decide si emitir
+        segun el flag ``_ultimo_pct``.
+        """
+        if total <= 0:
+            return
+        pct = int(actual * 100 / total)
+        if pct < 0:
+            pct = 0
+        elif pct > 100:
+            pct = 100
+        if pct == self._ultimo_pct:
+            return
+        self._ultimo_pct = pct
+        try:
+            self.progreso.emit(pct)
+        except Exception as e:  # noqa: BLE001
+            log().warning(
+                "%s fallo emitiendo progreso (%d%%): %s",
+                self.proceso.LOG_PREFIX, pct, e,
+            )
 
     def run(self) -> None:
         if self._cancelado:
             self.error.emit("Ejecucion cancelada antes de iniciar")
             return
         try:
+            # NO emitimos progreso(0) explicito aca: la barra empieza
+            # en 0% por defecto y se actualiza cuando el proceso reporta
+            # su primer avance via ``_emit_progreso_cb``. Emitir 0%
+            # manualmente puede causar race conditions con Qt en Windows.
             resultado = self.proceso.ejecutar(
-                self.archivos, modo_prueba=self.modo_prueba,
+                self.archivos,
+                modo_prueba=self.modo_prueba,
+                progreso=self._emit_progreso_cb,
+                cancelado=lambda: self._cancelado,
             )
             if self._cancelado:
                 # El proceso termino pero el usuario ya pidio cancelar.
                 return
             self.terminado.emit(resultado)
+        except ProcesoCancelado:
+            # El proceso aborto cooperativamente. Log info + signal error
+            # (la UI muestra un mensaje amigable).
+            log().info(
+                "%s Ejecucion cancelada por el usuario.",
+                self.proceso.LOG_PREFIX,
+            )
+            try:
+                self.error.emit("Ejecucion cancelada por el usuario")
+            except Exception:
+                pass
         except BaseException as e:  # noqa: BLE001 - captura defensiva
             # Loggear con traceback completo a la bitacora.
             try:
@@ -181,16 +233,32 @@ class VistaEjecucion(QWidget):
         self.btn_ejecutar.setObjectName("primary")
         self.btn_ejecutar.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_ejecutar.clicked.connect(self._ejecutar)
+        # Boton "Cancelar ejecucion". Empieza oculto; aparece cuando
+        # arranca el worker y se oculta cuando termina.
+        self.btn_cancelar = QPushButton("✕  Cancelar")
+        self.btn_cancelar.setObjectName("danger")
+        self.btn_cancelar.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_cancelar.clicked.connect(self._cancelar_ejecucion)
+        self.btn_cancelar.hide()
         btn_row.addWidget(self.btn_quitar)
         btn_row.addWidget(self.btn_limpiar)
         btn_row.addStretch()
+        btn_row.addWidget(self.btn_cancelar)
         btn_row.addWidget(self.btn_ejecutar)
         cont_layout.addLayout(btn_row)
 
         self.progress = QProgressBar()
+        # Arrancamos en modo indeterminate (spinner). Cuando llegue el
+        # PRIMER progreso real desde el worker, _on_progreso cambia a
+        # modo determinado (setRange(0, 100) + setValue). Asi, durante
+        # el I/O inicial (lectura del ZIP/Excel + copy_data) el usuario
+        # ve el spinner en vez de una barra estancada en 0% -> no da
+        # sensacion de cuelgue. NO emite signals extra desde el worker.
         self.progress.setRange(0, 0)
+        self.progress.setValue(0)
         self.progress.hide()
         cont_layout.addWidget(self.progress)
+        self._progreso_iniciado = False  # Para alternar indeterminate -> determinado.
         self.estado = QLabel("")
         cont_layout.addWidget(self.estado)
 
@@ -337,19 +405,84 @@ class VistaEjecucion(QWidget):
             return
 
         self.btn_ejecutar.setEnabled(False)
+        self.btn_cancelar.show()
         self.progress.show()
         self.estado.setText(f"Ejecutando {self._nombre_proceso}...")
 
         self._worker = WorkerEjecucion(
             proceso, list(self._archivos), self._cfg.modo_prueba,
         )
-        self._worker.terminado.connect(self._on_terminado)
-        self._worker.error.connect(self._on_error)
+        # Forzar ``Qt.QueuedConnection`` para que los slots se ejecuten
+        # SIEMPRE en el thread del receptor (main thread). Sin esto, Qt
+        # decide el tipo de conexion segun los threads al momento del
+        # connect, lo cual puede causar que ``_on_progreso`` se ejecute
+        # en el thread del worker y toque widgets de UI -> crash
+        # silencioso en Windows + PySide6.
+        self._worker.terminado.connect(
+            self._on_terminado, Qt.ConnectionType.QueuedConnection,
+        )
+        self._worker.error.connect(
+            self._on_error, Qt.ConnectionType.QueuedConnection,
+        )
+        self._worker.progreso.connect(
+            self._on_progreso, Qt.ConnectionType.QueuedConnection,
+        )
+        # Resetear el flag para que el primer emit cambie el modo
+        # del QProgressBar de indeterminate a determinado.
+        self._progreso_iniciado = False
+        self.progress.setRange(0, 0)  # indeterminate mientras esperamos el 1er emit.
+        self.progress.setValue(0)
         self._worker.start()
+
+    def _on_progreso(self, pct: int) -> None:
+        """Handler del signal ``progreso`` del worker (0..100).
+
+        La primera vez que llega progreso real, cambia el QProgressBar
+        de modo indeterminate (spinner) a modo determinado (% real).
+        Asi durante el I/O inicial el usuario ve el spinner, no una
+        barra estancada en 0%.
+        """
+        if not self._progreso_iniciado:
+            # Primer progreso real: pasamos a modo determinado.
+            self._progreso_iniciado = True
+            self.progress.setRange(0, 100)
+        self.progress.setValue(pct)
+        # Actualizar el label con el % para feedback textual.
+        self.estado.setText(
+            f"Ejecutando {self._nombre_proceso}... {pct}%"
+        )
+
+    def _cancelar_ejecucion(self) -> None:
+        """Handler del boton 'Cancelar'. Pregunta confirmacion y avisa al worker."""
+        if self._worker is None or not self._worker.isRunning():
+            return
+        resp = QMessageBox.question(
+            self,
+            "Cancelar ejecucion",
+            f"¿Cancelar la ejecucion de {self._nombre_proceso}?\n\n"
+            "Los archivos parciales no se guardaran. Esta accion no se puede deshacer.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,  # default = No (es la opcion segura)
+        )
+        if resp != QMessageBox.StandardButton.Yes:
+            return
+        # Marcar el worker para que termine ASAP. El run() chequea
+        # self._cancelado y emite error si estaba marcado al inicio,
+        # o ignora la emision de terminado si se marco durante el run.
+        self._worker.cancelar()
+        self.btn_cancelar.setEnabled(False)
+        self.estado.setText(f"Cancelando {self._nombre_proceso}...")
+        log().info("%s cancelacion solicitada por el usuario", self._worker.proceso.LOG_PREFIX)
 
     def _on_terminado(self, resultado: ResultadoProceso) -> None:
         self.progress.hide()
+        # Resetear el flag para la proxima ejecucion (vuelve a indeterminate).
+        self._progreso_iniciado = False
+        self.progress.setRange(0, 0)
+        self.progress.setValue(0)
         self.btn_ejecutar.setEnabled(True)
+        self.btn_cancelar.hide()
+        self.btn_cancelar.setEnabled(True)
 
         if resultado.exito:
             # Invalidar el cache de "ultimo ejecutado" para que el panel
@@ -379,7 +512,13 @@ class VistaEjecucion(QWidget):
 
     def _on_error(self, msg: str) -> None:
         self.progress.hide()
+        # Resetear el flag para la proxima ejecucion (vuelve a indeterminate).
+        self._progreso_iniciado = False
+        self.progress.setRange(0, 0)
+        self.progress.setValue(0)
         self.btn_ejecutar.setEnabled(True)
+        self.btn_cancelar.hide()
+        self.btn_cancelar.setEnabled(True)
         self.estado.setText(f"[ERROR] {msg}")
         QMessageBox.critical(self, "Error inesperado", msg)
 

@@ -288,6 +288,29 @@ def _qss_global(p: Paleta) -> str:
         background-color: {p.primary_pressed};
         color: {p.on_primary};
     }}
+    QPushButton#danger {{
+        background-color: {p.danger};
+        color: {p.on_danger};
+        border: 1px solid {p.danger};
+        border-radius: {RADIO_MD}px;
+        padding: 6px {ESPACIO_MD}px;
+        font-weight: 600;
+    }}
+    QPushButton#danger:hover {{
+        background-color: {p.on_danger};
+        color: {p.danger};
+        border: 1px solid {p.danger};
+    }}
+    QPushButton#danger:pressed {{
+        background-color: {p.danger};
+        color: {p.on_danger};
+        opacity: 0.85;
+    }}
+    QPushButton#danger:disabled {{
+        background-color: {p.surface_alt};
+        color: {p.fg_disabled};
+        border: 1px solid {p.border};
+    }}
 
     /* ------- Inputs ------- */
     QLineEdit, QComboBox, QDateEdit, QSpinBox {{

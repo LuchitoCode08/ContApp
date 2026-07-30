@@ -21,13 +21,14 @@ from __future__ import annotations
 import re
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
 import pandas as pd
 from openpyxl import load_workbook
 from dateutil.relativedelta import relativedelta
 
 from app.config import RESULTADOS_DIR
-from procesos.base import ProcesoBase, ResultadoProceso
+from procesos.base import ProcesoBase, ProcesoCancelado, ResultadoProceso
 from utils.archivos import carpeta_modo_prueba, carpeta_resultados
 from utils.bitacora import log
 from utils.json_manager import leer_json
@@ -338,6 +339,9 @@ class ProcesoFierro(ProcesoBase):
         archivo_origen: Path,
         datos_por_hoja: dict[str, pd.DataFrame],
         hojas_preservar: tuple[str, ...] = ("Diario 2026",),
+        *,
+        progreso: Callable[[int, int], None] | None = None,
+        cancelado: Callable[[], bool] | None = None,
     ) -> None:
         """Escribe varias hojas en el archivo Excel (estrategia hibrida).
 
@@ -388,12 +392,36 @@ class ProcesoFierro(ProcesoBase):
                 ws.append(fila)
 
         # 4) Volcar las hojas nuevas.
+        # Precalcular ``total`` (filas de TODAS las hojas nuevas) para
+        # poder emitir progreso por porcentaje acumulado. Incluimos el
+        # encabezado de cada hoja (1 fila) en el total.
+        total = sum(len(df) + 1 for df in datos_por_hoja.values())
+        acumulado = 0
+        paso = max(1, total // 100) if total else 1  # Emitir cada 1%
+        # Chequeo de cancelacion al inicio (safety para archivos con
+        # < 100 filas) + cada 100 filas (latencia maxima ~50-100ms).
+        if cancelado and total > 0 and cancelado():
+            log().info("%s Cancelado antes de iniciar escritura.", self.LOG_PREFIX)
+            raise ProcesoCancelado()
         for nombre_hoja, df in datos_por_hoja.items():
             ws = wb_nuevo.create_sheet(title=nombre_hoja)
-            # Encabezados + datos.
+            # Encabezados.
             ws.append(tuple(df.columns))
-            for fila in df.itertuples(index=False, name=None):
+            acumulado += 1
+            for i, fila in enumerate(df.itertuples(index=False, name=None)):
+                # Chequeo cooperativo de cancelacion cada 100 filas
+                # (latencia maxima ~50-100ms, despreciable).
+                if cancelado and i > 0 and i % 100 == 0 and cancelado():
+                    log().info(
+                        "%s Cancelado en escritura de '%s' fila %d.",
+                        self.LOG_PREFIX, nombre_hoja, i,
+                    )
+                    raise ProcesoCancelado()
                 ws.append(tuple(_sanitize(v) for v in fila))
+                acumulado += 1
+                # Reportar avance cada 1% del total acumulado.
+                if progreso and acumulado % paso == 0:
+                    progreso(acumulado, total)
 
         # 5) Guardar.
         wb_nuevo.save(archivo_destino)
@@ -410,6 +438,9 @@ class ProcesoFierro(ProcesoBase):
         self,
         archivos: list[Path],
         modo_prueba: bool = False,
+        *,
+        progreso: Callable[[int, int], None] | None = None,
+        cancelado: Callable[[], bool] | None = None,
     ) -> ResultadoProceso:
         log().info(
             "%s Iniciando (modo_prueba=%s)",
@@ -441,7 +472,12 @@ class ProcesoFierro(ProcesoBase):
                     "Diario 2026 - Copia": copia,
                     "Comprobante": comprobante,
                 },
+                progreso=progreso,
+                cancelado=cancelado,
             )
+        except ProcesoCancelado:
+            # La cancelacion cooperativa debe propagarse al Worker.
+            raise
         except Exception as e:
             return ResultadoProceso(
                 exito=False, mensaje=f"No se pudo escribir el Excel: {e}",
