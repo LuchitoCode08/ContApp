@@ -219,3 +219,180 @@ Solicitado por el usuario: el listado plano de 8 JSONs era poco legible.
 - Branch: `main`, 15 commits locales, 1 commit ahead de `origin/main`.
 - Tests verificados: comprobante (2.79s con 2746 filas), fierro (48s con 27k filas), zeus (171s con 125k filas). Todos producen el mismo contenido que el script original.
 - **Hallazgo importante**: el script original `scripts/GenerarComprobante.py` tenia un bug latente en `_aplicar_foapal` que nunca se manifesto porque el DataFrame que recibia tenia la estructura antigua. Al migrar, expusimos el bug y lo corregimos.
+
+
+## Sesion 2026-07-29
+
+**Resumen:** Optimizaciones de UI (lag y crash), empaquetado completo (Fase 5), sistema de auto-actualizacion, versionado centralizado. **Resultado: el proyecto esta production-ready con pipeline de release automatico.**
+
+### [x] Completadas
+
+- [x] **Fix #1 (race condition)**: `utils/json_manager.py` agrega `adquirir_lock/liberar_lock/con_lock` con archivos `.lock` por JSON. Worker de ejecucion captura `BaseException` (no solo `Exception`) para que NUNCA cierre la app.
+- [x] **Fix #2 (lag al volver a Inicio)**: `utils/bitacora.py` agrega `_leer_ultimas_n_lineas()` (seek desde el final del archivo) + cache de 30s en `obtener_ultimo()`. **Benchmark: 2.84 ms sin cache, 0.001 ms con cache (log de 4.7 MB).**
+- [x] **Editor JSON con lock**: `_on_guardar` usa `con_lock(...)` antes de escribir. Si el archivo esta bloqueado, muestra "JSON bloqueado" en vez de pisar.
+- [x] **Invalidacion de cache**: `_on_terminado` del worker llama a `invalidar_cache_obtener_ultimo()` para que el panel "Ultimo ejecutado" muestre el resultado nuevo al volver a Inicio.
+- [x] **Versionado centralizado**: `app/version.py` con `__version__`, `APP_NAME`, `GITHUB_REPO`. Sidebar ahora muestra `v{__version__}` (antes hardcoded `"v1.0 · Fase 4"`).
+- [x] **Auto-updater completo**:
+  - `app/updater/version_utils.py`: semver (`parsear_version`, `comparar`, `hay_actualizacion`, `parsear_release`).
+  - `app/updater/checker.py`: `UpdaterChecker(QThread)` + `chequear_actualizacion_bloqueante()` + `UpdaterError`.
+  - `app/updater/downloader.py`: `UpdaterDownloader(QThread)` con progreso 0-100, cancelacion, escritura atomica (`.partial` -> final).
+  - `ui/ventanas/dialogo_actualizacion.py`: modal con notas en markdown, boton "Descargar e instalar", barra de progreso.
+  - Integracion en `principal.py`: boton "🔄 Actualizar" en footer + `QTimer.singleShot(1500, ...)` para chequeo silencioso al iniciar.
+- [x] **Empaquetado (Fase 5)**:
+  - `app/config.py`: `_detectar_raiz()` usa `sys.executable.parent` cuando `sys.frozen=True`. `_data_dir()` y `_log_dir()` helpers monkey-patcheables. `guardar_preferencias` usa `PREFERENCIAS.parent` para que monkey-patching funcione.
+  - `ContApp.spec` (PyInstaller): `--onedir`, `console=False`, bundlea `jsons/` como fallback, oculta modulos innecesarios (tkinter/wx/matplotlib/scipy/pytest).
+  - `ContApp.iss` (Inno Setup): instala en `%LOCALAPPDATA%\ContApp\` sin UAC (`PrivilegesRequired=lowest`), compresion LZMA2, accesos directos, desinstalador registrado.
+  - `.github/workflows/release.yml`: al pushear tag `v*.*.*`, valida version contra `app/version.py`, build con PyInstaller, instala Inno Setup via choco, genera instalador + portable.zip, crea **draft release** en GitHub.
+  - `.github/workflows/tests.yml`: corre pytest en cada PR/push.
+  - `.github/dependabot.yml`: vigila las 4 actions, abre PRs semanales para minor+patch, ignora major bumps (decision manual).
+- [x] **Pines de versiones exactas**: actions migradas de `@v5/@v6/@v4/@v2` a `@v5.0.0/@v6.1.0/@v4.6.2/@v2.4.1` para maxima reproducibilidad. Combinado con Dependabot: parches automaticos + major bumps manuales.
+- [x] **Bug encontrado y arreglado**: `liberar_lock` pasaba la ruta del .lock a `lock_adquirido()` (que espera la ruta del JSON). Tests lo detectaron al primer run. Fix: derivar la ruta del JSON antes de chequear.
+
+### [ ] Pendientes (registradas para no perder el hilo)
+
+#### Tier 1 - UX wins
+
+- [x] **#1 Editor JSON lazy**: `_cargar_lista_jsons()` crea solo secciones (procesos), colapsadas con placeholder "Cargando...". Los archivos se cargan via `itemExpanded` solo cuando el usuario expande la seccion. Idempotente (no duplica). Implementado en sesion 2026-07-29 (PM).
+- [ ] **#2 Debounce de `_aplicar_tema()`**: al cambiar tema, re-aplica QSS a muchos widgets en el mismo ciclo. Agrupar en 1 repaint (50-100 ms).
+- [ ] **#3 Indicador de progreso real**: el `QProgressBar` actual es indeterminate (spinner). Agregar `progreso` signal al Worker para mostrar % real.
+- [x] **#4 Cancelar proceso en curso**: `WorkerEjecucion.cancelar()` ya esta conectado a `btn_cancelar` (estilo `danger`) con confirmacion `QMessageBox.question`. Implementado en sesion 2026-07-29 (PM).
+- [ ] **#5 Logs filtrables en UI**: tabla en Configuracion hoy muestra todo. Agregar filtros por nivel/proceso/fecha con UI dedicada.
+
+#### Tier 2 - Robustez
+
+- [ ] **#6 Persistencia de `EN_DESARROLLO` de Zeus**: hoy hardcoded `True` en `procesos/zeus.py`. Cuando bajen a `False`, decidir si persiste o siempre False.
+- [ ] **#8 Tests E2E del instalador**: test que corra el `.exe` y verifique que abre ventana + lee JSONs + escribe outputs.
+- [ ] **#9 Smoke test del `.exe` en CI**: step que lance `dist/ContApp.exe`, espere 5s, verifique vivo, lo mate.
+
+#### Tier 3 - Polish
+
+- [ ] **#10 Icono del .exe**: `.ico` propio. Hoy usa el icono default de PyInstaller.
+- [ ] **#11 Changelog automatico**: hoy el body del release es estatico. Generar desde commits convencionales.
+- [ ] **#12 Documentacion de usuario** (`docs/USER_GUIDE.md`): manual con capturas, paso a paso.
+- [ ] **#13 Type hints completos**: hay `Any` en algunos lados. `mypy --strict` para enforce.
+- [ ] **#14 Tests parametrizados faltantes**: `es_modo_prueba` con 6 casos, podria tener 20+.
+- [ ] **#15 Internacionalizacion**: hoy todo en espanol. `gettext` para futuro i18n.
+
+### [ ] Riesgos / cosas a vigilar
+
+- [ ] **Deprecation futura de GitHub Actions v5/v6**: Dependabot avisa, hay que actuar.
+- [ ] **Antivirus y PyInstaller**: firmas pueden romperse. Considerar code signing (largo plazo).
+- [ ] **Inno Setup 6 deprecation**: bajo riesgo por ahora (sigue activo).
+- [ ] **PySide6 breaking changes**: monitorear con tests E2E.
+
+### [ ] Proxima sesion
+
+- [ ] Arrancar con **#4 (Cancelar proceso)**: pequeno y util, le da control al usuario. Conectar `WorkerEjecucion.cancelar()` al boton existente + dialogo de confirmacion.
+- [ ] O **#1 (Editor JSON lazy)** si hay tiempo: mejora concreta con muchos JSONs.
+
+### Notas
+
+- Tests: **176 passed, 4 skipped** (los 4 skipped son tests de ejecucion de Zeus mientras `EN_DESARROLLO=True`).
+- Build local exitoso: `dist/ContApp/ContApp.exe` (170 MB en 888 archivos), arranca correctamente.
+- Commit hash local pendiente de push a `origin/main` (segun ultima verificacion).
+- **Fase 5 cerrada**. Pipeline de release automatico funcional: tag -> build -> instalador -> GitHub Release.
+
+---
+
+## Sesion 2026-07-29 (Tier-1 #1 Editor JSON lazy)
+
+**Resumen:** La pantalla Diccionarios ahora hace **lazy load**: solo crea las secciones (procesos) al abrir, con placeholder "Cargando...". Los JSONs de cada proceso se listan cuando el usuario expande la seccion. Para 8 JSONs el ahorro es marginal, pero la optimizacion escala bien a 50+ JSONs (caso futuro). **8 tests nuevos, suite total 193 passed + 4 skipped, 0 regresiones.**
+
+### [x] Completadas
+
+- [x] **Lazy load en `_cargar_lista_jsons()`** (`ui/ventanas/editor_json.py`):
+  - Antes: enumeraba TODOS los `.json` con `glob`, creaba 1 `QTreeWidgetItem` por archivo, expandia todas las secciones. O(N archivos).
+  - Ahora: itera `JSONS_DIR.iterdir()` y crea solo 1 `QTreeWidgetItem` por proceso (seccion). O(procesos). Cada seccion arranca **colapsada** con un hijo placeholder "Cargando...".
+  - Conectado `itemExpanded` a nuevo `_on_expandir_seccion` que: lee `glob("*.json")` del directorio del proceso, quita el placeholder y agrega los items reales (idempotente).
+  - Filtro de secciones: ignora carpetas que empiezan con `_` o `.` (backups, caches, work-in-progress).
+  - Directorio de proceso vacio al expandir -> placeholder "(sin archivos JSON)".
+  - Directorio de proceso desaparecido -> placeholder "(directorio no disponible)" (NO crashea).
+- [x] **Tests**: nuevo archivo `tests/test_editor_json_lazy.py` con **8 tests**:
+  - Estado inicial: 3 secciones, 0 items cargados, todas con placeholder.
+  - Filtrado: carpetas `_basura` (con `_`) NO aparecen como seccion.
+  - Expansion carga hijos del proceso.
+  - Re-expansion es idempotente (no duplica).
+  - Directorio sin JSONs -> placeholder amigable.
+  - `JSONS_DIR` inexistente -> UI abre sin crashear.
+  - Directorio de proceso desaparecido tras cargar -> mensaje de error.
+  - Seleccionar un item sigue disparando `_on_seleccionar_json` correctamente.
+
+### Antes vs Despues (apertura de Pantalla Diccionarios)
+
+| Metrica | Antes (eager) | Ahora (lazy) |
+|---|---|---|
+| `QTreeWidgetItem` creados | 11 (3 secciones + 8 archivos) | 6 (3 secciones + 3 placeholders) |
+| `QTreeWidgetItem` por seccion expandida | 8 | 0 hasta expandir |
+| `QFileInfo.stat()` implícitos | ~8 | 0 hasta expandir |
+| `Path.read_text()` o parsing | 0 | 0 (parseo sigue siendo al seleccionar) |
+| Glob `*.json` calls | 3 (uno por proceso) | 0 inicial; 1 lazy por seccion expandida |
+
+> El parseo real del JSON (`leer_json`) sigue siendo lazy: solo ocurre cuando el usuario selecciona el item. Eso ya estaba bien antes.
+
+### Lecciones aprendidas
+
+- **Placeholder + itemExpanded = patron Qt estandar para lazy load en trees**. La senal `itemExpanded(QTreeWidgetItem*)` solo se dispara cuando el usuario interactua (no en la construccion inicial), por lo que conectar ahi es 100% seguro.
+- **Filtrar secciones vacias vs. mostrarlas como "sin JSONs"**: trade-off. Si filtras, el usuario no ve procesos nuevos hasta que tengan contenido. Si las dejas, el costo es 1 `QTreeWidgetItem` extra por proceso vacio (despreciable). Decidi **mostrarlas** con placeholder amigable para que el usuario sepa que ese proceso "existe" pero esta vacio.
+- **Carpetas con prefijo `_` o `.`**: convencion universal para "archivos/carpetas internas" (`.git`, `.vscode`, `.backups`, `_pycache_`). Filtrarlas del listado es robusto y matchea expectativas del usuario.
+- **`sorted(JSONS_DIR.iterdir())` ya estaba en el codigo**; el orden alfabetico es por nombre del archivo (no del proceso). En `comprobante/`: `dos.json` < `uno.json` ('d' < 'u' en ASCII).
+- **Monkey-patch sobre `editor_mod.JSONS_DIR`**: la constante se importa al modulo, asi que `monkeypatch.setattr(editor_mod, "JSONS_DIR", tmp)` funciona limpio. NO hace falta patchear `app.config.JSONS_DIR` ni `_detectar_raiz`.
+
+### Estado
+
+- Tests: **193 passed, 4 skipped** (185 anteriores + 8 nuevos, 0 regresiones).
+- UI: usuario ahora ve 3 secciones colapsadas al entrar a Diccionarios. Click en `▶` expande y carga los JSONs de ese proceso.
+- Sin cambios visibles para el usuario actual (mismos nombres, misma jerarquia) - solo cambia el momento de carga.
+
+### [ ] Proxima sesion
+
+- [ ] **#2 (Debounce de `_aplicar_tema`)**: al cambiar tema, re-aplica QSS a muchos widgets en el mismo ciclo. Agrupar en 1 repaint (50-100 ms).
+- [ ] **#3 (Progress real)**: el `QProgressBar(0,0)` solo es indeterminate; conectar a un `Signal(int)` del worker para mostrar % real.
+- [ ] **(Opcional) Polear cancelacion en procesos**: refactor `ejecutar()` para aceptar `cancelado: Callable[[], bool]` y chequearlo en loops.
+- [ ] **(Opcional) #5 Logs filtrables en UI**: filtros por nivel/proceso/fecha en Pantalla Configuracion.
+
+---
+
+## Sesion 2026-07-29 (Tier-1 #4 Cancelar proceso)
+
+**Resumen:** Implementacion completa del flujo "Cancelar ejecucion" desde la UI. Se agrego el boton `btn_cancelar` (estilo `danger`, rojo) que aparece cuando arranca el worker y se oculta al terminar. Confirmacion con `QMessageBox.question` (default = No, opcion segura). Al confirmar, llama `WorkerEjecucion.cancelar()` y deshabilita el boton para evitar doble click. **9 tests nuevos, suite total 185 passed + 4 skipped.**
+
+### [x] Completadas
+
+- [x] **UI - boton Cancelar**: `ui/ventanas/ejecutar_proceso.py` agrega `btn_cancelar` (objectName="danger", cursor PointingHand, arranca oculto) en el `btn_row` del `_construir_ui()`.
+- [x] **UI - confirmacion**: nuevo metodo `_cancelar_ejecucion` que muestra `QMessageBox.question` con default=No. Yes -> llama `self._worker.cancelar()`, deshabilita el boton y actualiza `estado` a "Cancelando ...".
+- [x] **UI - visibilidad**: `_ejecutar` hace `self.btn_cancelar.show()` al arrancar el worker; `_on_terminado` y `_on_error` hacen `hide()` + `setEnabled(True)` al finalizar.
+- [x] **Tema - estilo #danger**: `ui/recursos/tema.py` agrega bloque QSS para `QPushButton#danger` (rojo de marca, blanco en hover, gris cuando disabled). Reutiliza `p.danger` / `p.on_danger` / `p.surface_alt` / `p.fg_disabled` que ya existian en la paleta.
+- [x] **Tests**: nuevo archivo `tests/test_cancelar_proceso.py` con 9 tests cubriendo estado inicial, no-op sin worker, confirm Yes (cancelar + disable), confirm No (no cancelar), y reset al terminar o fallar. Usa `QT_QPA_PLATFORM=offscreen` + monkeypatch sobre `QMessageBox`.
+
+### Tests del flujo Cancelar
+
+| Test                                          | Que verifica                                     |
+|-----------------------------------------------|--------------------------------------------------|
+| `test_btn_cancelar_aranca_oculto`             | Arranca hidden (no hay job)                      |
+| `test_btn_cancelar_es_danger`                 | objectName="danger" (QSS lo pinta rojo)          |
+| `test_btn_cancelar_arranca_habilitado`        | Enabled para cuando se muestre                   |
+| `test_cancelar_sin_worker_es_noop`            | Click sin worker: no muestra dialog              |
+| `test_cancelar_con_worker_detenido_es_noop`   | Worker existe pero `isRunning()==False`: no-op   |
+| `test_cancelar_confirmado_llama_cancelar`     | Yes -> `cancelar()` llamado, btn disabled        |
+| `test_cancelar_rechazado_no_llama_cancelar`   | No -> `cancelar()` NO llamado, btn enabled       |
+| `test_on_terminado_oculta_btn_cancelar`       | `_on_terminado` hide + reset enabled             |
+| `test_on_error_oculta_btn_cancelar`           | `_on_error` hide + reset enabled + "[ERROR]"     |
+
+### Lecciones aprendidas
+
+- **PowerShell + pytest + UTF-16**: `Tee-Object` en PS5.1 guarda en UTF-16 con BOM. Usar `Out-File -Encoding ascii` o redirigir con `>` para mantener salida legible desde el visor del host.
+- **`QMessageBox.critical/information` en tests offscreen**: aunque `QT_QPA_PLATFORM=offscreen` no muestre la ventana, la llamada puede colgarse si el parent es un widget con event loop. Mejor parchar con `monkeypatch.setattr(QMessageBox, "critical", staticmethod(lambda *a, **k: QMessageBox.StandardButton.Ok))`.
+- **Fixture con QThread vivo**: el `tearDown` con `worker.wait(2000)` cuelga los tests. Regla: en tests, **nunca** crear un `WorkerEjecucion().start()` real; usar mocks que satisfagan `isRunning()` y `cancelar()`.
+- **`ResultadoProceso` no tiene campo `proceso`**: solo `exito`, `mensaje`, `archivos_salida`, `archivos_salida_originales`, `detalles`. El nombre del proceso vive en otro lado (worker.proceso.LOG_PREFIX).
+
+### Estado
+
+- Tests: **185 passed, 4 skipped** (180 anteriores + 9 nuevos, 0 regresiones).
+- UI: boton rojo aparece al ejecutar y se oculta al terminar. Confirmacion obligatoria para cancelar.
+- **Limitacion conocida**: `ProcesoBase.ejecutar()` no polea `self._cancelado` en loops internos; la cancelacion es cooperativa (toma efecto en el yield natural entre operaciones de Excel). Para un archivo Fierro de 27k filas (~48s), el usuario ve "Cancelando ..." unos segundos hasta el siguiente yield. Refinar mas requiere pasar `cancelado: Callable[[], bool]` a `ejecutar()` y chequearlo en cada loop - **NO implementado en esta sesion**.
+
+### [ ] Proxima sesion
+
+- [ ] **#1 (Editor JSON lazy)**: cargar JSONs bajo demanda, no al abrir la ventana. Ganar tiempo de inicio.
+- [ ] **#3 (Progress real)**: el `QProgressBar(0,0)` solo es indeterminate; conectar a un `Signal(int)` del worker para mostrar % real.
+- [ ] **(Opcional) Polear cancelacion en procesos**: refactor `ejecutar()` para aceptar `cancelado: Callable[[], bool]` y chequearlo en loops.
