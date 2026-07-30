@@ -396,3 +396,148 @@ Solicitado por el usuario: el listado plano de 8 JSONs era poco legible.
 - [ ] **#1 (Editor JSON lazy)**: cargar JSONs bajo demanda, no al abrir la ventana. Ganar tiempo de inicio.
 - [ ] **#3 (Progress real)**: el `QProgressBar(0,0)` solo es indeterminate; conectar a un `Signal(int)` del worker para mostrar % real.
 - [ ] **(Opcional) Polear cancelacion en procesos**: refactor `ejecutar()` para aceptar `cancelado: Callable[[], bool]` y chequearlo en loops.
+
+## Sesion 2026-07-30
+
+**Resumen:** Implementacion de Tier-1 #1 (Editor JSON lazy), #3 (Progreso real + cancelacion cooperativa), #5 (Tests pytest-qt de PantallaConfiguracion) + #2 (Debounce de tema). Tambien se resolvieron dos bugs criticos de performance/correctitud: el cuelgue al ejecutar Fierro con archivo grande (threading fix), y el tema no cambiaba visualmente (bug de `_MODO` singleton).
+
+**Resultado:** las 5 tareas de Tier-1 marcadas en la sesion 2026-07-29 estan completas. Suite: **232 passed, 4 skipped** (193 originales + 39 nuevos).
+
+
+### [x] Completadas
+
+#### Tier-1 #3 Progreso real + cancelacion cooperativa
+- **procesos/base.py**: nueva excepcion `ProcesoCancelado`. Firma de `ejecutar()` extendida con kwargs `progreso: Callable[[int, int], None] | None` y `cancelado: Callable[[], bool] | None` (kwarg-only con default `None` para backward compat).
+- **procesos/{comprobante,fierro,zeus}.py**: las 3 clases aceptan los nuevos kwargs. Cada loop interno (FOAPAL para Comprobante; writer_excel para Fierro y Zeus) emite progreso cada 1% del total acumulado y chequea cancelacion cada 100 filas (latencia maxima ~50-100ms). Tambien `except ProcesoCancelado: raise` antes del `except Exception` en cada `ejecutar()` para que la cancelacion NO se convierta en error generico.
+- **ui/ventanas/ejecutar_proceso.py**:
+  - `WorkerEjecucion.progreso = Signal(int)` (0..100).
+  - `_emit_progreso_cb()` con dedup (`_ultimo_pct`) para no emitir signals redundantes.
+  - **Fix del crash de threading**: `Qt.ConnectionType.QueuedConnection` explicito en los `connect()` de las 3 signals (`terminado`, `error`, `progreso`) para que los slots se ejecuten en el main thread siempre. Sin esto, Qt puede decidir DirectConnection y los slots tocan widgets de UI desde el thread del worker -> crash silencioso en Windows + PySide6.
+  - Try/except alrededor de `self.progreso.emit(pct)` para que un fallo de signal no mate al worker.
+  - Quitados `progreso.emit(0)` y `progreso.emit(100)` del worker.run() (causa sospechosa de race conditions).
+- **ui/ventanas/ejecutar_proceso.py** (VistaEjecucion):
+  - `progress.setRange(0, 100)` reemplazado por spinner `setRange(0, 0)` que cambia a `setRange(0, 100)` SOLO cuando llega el primer progreso real. Patron: spinner durante I/O inicial (5-30s con archivos grandes) -> barra con % real apenas entra al loop de escritura.
+- **tests/test_progreso.py**: NUEVO archivo con **16 tests** que cubren contrato (ProcesoCancelado, kwargs en ejecutar), worker (signal progreso), los 3 procesos (cancelacion cooperativa, emision en loops, muestreo cada 100 filas), y la API publica coherencia.
+
+
+#### Bug fix: app se cuelga al ejecutar Fierro con archivo grande
+- **Sintoma**: al ejecutar Fierro con archivo grande en modo produccion, UI congelada unos segundos y luego cierre silencioso (sin dialog ni traceback en el log).
+- **Causa**: en PySide6 6.x sobre Windows, `Signal.emit()` desde un QThread puede hacer DirectConnection (en lugar de QueuedConnection automatica), causando que el slot `_on_progreso` se ejecute en el thread del worker. Modificar widgets de UI desde otro thread = **crash silencioso**.
+- **Fix**: forzar `Qt.ConnectionType.QueuedConnection` explicito en todos los `connect()` del worker.
+- **Verificacion**: usuario confirmo que ya NO se cuelga.
+
+#### Sub-bug: barra se queda en 0% durante I/O inicial
+- **Sintoma**: aun con el fix de threading, el usuario veia la barra en 0% durante el I/O inicial (lectura de ZIP/Excel + copy_data), dando sensacion de cuelgue aunque la app estuviera trabajando.
+- **Causa**: el callback `progreso` solo se invoca dentro de los loops internos. Todo el I/O previo no emite nada.
+- **Intento fallido (revertido)**: checkpoints de fase (`progreso(0, 100)`, `progreso(50, 100)`, etc.) dentro de los procesos. **Causo crash de vuelta** porque emitian muchas signals extra desde el thread del worker. Revertido por completo.
+- **Solucion final**: en `VistaEjecucion`, `QProgressBar` arranca en modo indeterminate (spinner). En el primer emit real desde el worker, cambia a modo determinado (%). **Cero signals extra desde el worker** -- el cambio es solo en el cliente.
+
+#### Tier-1 #5 Tests pytest-qt de PantallaConfiguracion
+- **tests/test_configuracion_ui.py**: NUEVO archivo con **20 tests** cubriendo:
+  - Estado inicial (6 columnas, combos con "Todos", log vacio, timer periodico detenido).
+  - Carga de registros (`refrescar()`).
+  - 5 filtros individuales (proceso, nivel, modo, buscador, fecha).
+  - Buscador con debounce 300ms.
+  - Refresco silencioso periodico (detecta nuevos registros, no altera si no hay cambios).
+  - Boton "Aplicar filtros" dispara `_aplicar_filtros`.
+  - Exportar CSV genera archivo con header + filas correctas.
+  - Exportar Excel genera `.xlsx` valido con 6 columnas.
+  - Limpiar antiguos filtra por N dias, cancela si usuario dice No.
+  - Filtros combinados (AND logico).
+- **Pitfall encontrado**: cuando un modulo hace `from app.config import BITACORA_LOG`, hay que patchear **tanto** `app.config.BITACORA_LOG` como el modulo destino, sino `leer_registros()` lee la ruta original y los tests ven logs de tests anteriores.
+- **Pitfall 2**: PowerShell `-replace` aplicado a todo un archivo convirtio una llamada interna en recursion accidental. **Verificar manualmente** despues con `Select-String`.
+
+#### Tier-1 #2 Debounce de `_aplicar_tema()`
+- **ui/ventanas/principal.py**:
+  - `_toggle_tema()` ahora persiste el nuevo tema **inmediatamente** (no se debouncea) pero agenda la aplicacion visual con un `QTimer` single-shot de 100ms. Si el usuario togglea rapidamente, los clicks se acumulan en un solo repaint al final.
+  - Nuevo metodo `_aplicar_tema_diferido()` ejecuta el codigo visual.
+  - Persistencia inmediata garantiza que si la app se cierra dentro de los 100ms, no se pierde el cambio.
+- **tests/test_debounce_tema.py**: NUEVO archivo con **6 tests**: timer existe y es single-shot de 100ms, `aplicar_tema` no se aplica al instante, se aplica despues del debounce, multiples toggles rapidos = 1 sola aplicacion, ultimo toggle es el que se aplica, persistencia es inmediata.
+
+
+### [x] Bug fixes adicionales (misma sesion)
+
+#### Boton "Limpiar antiguos" invisible
+- **Sintoma**: el boton "Limpiar antiguos" de PantallaConfiguracion tenia fondo rojo y texto rojo, asi que no se veia nada hasta el hover (gris).
+- **Causa**: `setStyleSheet` local solo ponia `color: rojo + border: rojo` sin `background-color`. Qt mezclaba esto con el QSS global `#danger` que tiene `background-color: rojo` -> resultado: fondo rojo + texto rojo = invisible.
+- **Fix**: stylesheet local explicito con fondo **transparente** en estado normal, gris claro en hover, gris medio en pressed. Ahora se ve el texto rojo sobre fondo transparente (visible).
+
+#### Cambio de tema demora ~800ms
+- **Sintoma**: al cambiar tema, la app se cuelga ~800ms (UI congelada).
+- **Causa 1**: `_aplicar_tema()` widget-level llamaba `_aplicar_filtros()` de PantallaConfiguracion, que **re-llenaba toda la tabla desde cero** con cientos de registros al cambiar tema. ~75% de las llamadas a Qt en el loop.
+  - **Fix**: nuevo metodo `_repintar_colores_tabla()` que solo actualiza `setForeground()` y `setBackground()` de celdas existentes (no recrea items).
+- **Causa 2**: `aplicar_a_widget()` en `tema.py` hacia **doble iteracion**: `app.allWidgets()` (ya itera todos) + `widget.findChildren(object)` por cada widget (O(N^2)). Con 300 widgets = 90,000 operaciones.
+  - **Fix**: eliminado el `findChildren()` redundante. De O(N^2) a O(N).
+- **Causa 3**: el repintado de todos los widgets se ejecuta en el **hilo GUI** dentro del QTimer de 100ms (sincronico).
+  - **Fix**: chunked application en `_aplicar_tema_diferido()`. Fase 1: QSS global + paleta (instantaneo). Fase 2: widgets con `_aplicar_tema` se procesan en **chunks de 8 widgets** con `QTimer.singleShot(0, ...)` entre cada chunk. La UI sigue respondiendo mientras se procesa en background.
+  - **Helper nuevo**: `_build_palette(p)` en `tema.py` (refactor del bloque inline).
+  - **Versioning anti-spam**: `_tema_version` se incrementa en cada toggle. El chunk chequea `_tema_version` vs `_tema_version_pendiente` antes de procesar; si no coinciden (otro toggle llego primero), abandona silenciosamente.
+
+#### Bug critico post-chunked: el tema no cambia visualmente
+- **Sintoma**: despues del fix chunked, el tema NO cambiaba visualmente al togglear.
+- **Causa**: `_aplicar_tema_diferido()` llamaba `_paleta()` **antes** de actualizar el singleton `_MODO`. Como `_paleta()` lee `_MODO`, siempre devolvia la paleta ACTUAL, no la nueva. Resultado: aplicaba CLARO sobre CLARO (o OSCURO sobre OSCURO).
+- **Fix**: actualizar `_MODO` **antes** de llamar `_paleta()`:
+  ```python
+  import ui.recursos.tema as tema_mod
+  tema_mod._MODO = nuevo   # antes de _paleta()
+  p = tema_mod._paleta()    # ahora devuelve la paleta NUEVA
+  ```
+
+
+### [ ] Pendientes (no hechos en esta sesion)
+
+#### Tier-2
+- [ ] **#6 Persistencia de `EN_DESARROLLO` de Zeus**: hoy hardcoded `True` en `procesos/zeus.py`. Cuando bajen a `False`, decidir si persiste o siempre False.
+- [ ] **#8 Tests E2E del instalador**: test que corra el `.exe` y verifique que abre ventana + lee JSONs + escribe outputs.
+- [ ] **#9 Smoke test del `.exe` en CI**: step en workflow que ejecute `dist/ContApp.exe`, espere 5s, verifique vivo, lo mate.
+
+#### Tier-3
+- [ ] **#10 Icono del `.exe`**: `.ico` propio. Hoy usa el icono default de PyInstaller.
+- [ ] **#11 Changelog automatico**: hoy el body del release es estatico. Generar desde commits convencionales.
+- [ ] **#12 Documentacion de usuario** (`docs/USER_GUIDE.md`): manual con capturas, paso a paso.
+- [ ] **#13 Type hints completos**: hay `Any` en algunos lados. `mypy --strict` para enforce.
+- [ ] **#14 Tests parametrizados faltantes**: `es_modo_prueba` con 6 casos, podria tener 20+.
+- [ ] **#15 Internacionalizacion**: hoy todo en espanol. `gettext` para futuro i18n.
+
+#### Riesgo / cosas a vigilar
+- [ ] **Deprecation futura de GitHub Actions v5/v6**: Dependabot avisa, hay que actuar.
+- [ ] **Antivirus y PyInstaller**: firmas pueden romperse. Considerar code signing (largo plazo).
+- [ ] **Inno Setup 6 deprecation**: bajo riesgo por ahora (sigue activo).
+- [ ] **PySide6 breaking changes**: monitorear con tests E2E.
+
+
+### Lecciones aprendidas
+
+- **Auto-conexion de Qt en PySide6 6.x es fragil**: para signals entre threads, **siempre** usar `Qt.ConnectionType.QueuedConnection` explicito. La auto-conexion puede hacer DirectConnection si Qt decide que el emisor y receptor viven en el mismo thread en el momento del `connect()`, lo cual NO es lo que queremos cuando un slot toca widgets.
+- **`_paleta()` no es lo mismo que pasar la paleta por parametro**: si el modulo expone una funcion `_paleta()` que lee un singleton, hay que **actualizar el singleton** antes de cualquier otra operacion. Pasar la paleta explicitamente como parametro (como hicimos en `_qss_global(p)`) es mas robusto.
+- **`setStyleSheet` local REEMPLAZA el QSS global, no lo suma**: si queres complementar, hay que repetir TODOS los selectores que queres mantener. Para cambios menores (color, border), mejor usar propiedades Qt (`setForeground`, `setBackground`) que se suman al QSS existente.
+- **`app.allWidgets()` ya devuelve TODOS los widgets**: hacer `widget.findChildren(object)` adentro es O(N^2) redundante. Nunca lo hagas adentro de un loop.
+- **Chunking con `QTimer.singleShot(0, ...)`** es la forma estandar de no bloquear el event loop para tareas grandes. Cada chunk es una oportunidad para que Qt procese eventos pendientes (mouse moves, repaints, signals).
+- **Versioning en sistemas con callbacks async**: cuando el usuario puede invalidar el estado entre el momento de iniciar una operacion y el momento de terminarla, guardar un "version number" al inicio y comparar al final es la forma mas simple de cancelar trabajo obsoleto.
+- **PowerShell `-replace` puede romper codigo**: si el patron matchea dentro de un helper recursivo, te queda recursion infinita. **Siempre verificar** despues de aplicar transformaciones masivas con `Select-String` para confirmar que los helpers no se llaman a si mismos.
+
+### Commits de esta sesion
+
+```
+8615b94 feat: real progress bar, cooperative cancellation, debounced theme switching
+2698c2f test: add pytest-qt tests for PantallaConfiguracion
+614927d feat(ui): lazy load JSONs in PantallaDiccionarios tree
+```
+
+(Boton "Limpiar antiguos" + fix de cuelgue + fix de tema NO commiteados aun - avisar para commitear.)
+
+### Proxima sesion
+
+- [ ] **Decidir si commitear los ultimos fixes** (boton Limpiar + fix de performance de tema + bug de `_MODO`).
+- [ ] **Tier-2**: #6 persistencia de `EN_DESARROLLO` de Zeus.
+- [ ] **Tier-3**: #10 icono del .exe, #12 USER_GUIDE.md.
+- [ ] **Validacion con archivos reales** del usuario en modo produccion (Fase B del plan original).
+- [ ] **`git tag v1.0.0`** y push para disparar el pipeline de release (PyInstaller -> instalador -> GitHub Release).
+
+### Notas
+
+- Workspace: `c:\Users\lfloaiza\Documents\Demo`.
+- Branch: `main`. Commits locales pendientes de push (los 3 listados arriba ya estan pusheados; los ultimos fixes no).
+- Plan completo en `/memories/session/plan.md`.
+- Tests: **232 passed, 4 skipped** (193 originales + 16 progreso + 20 configuracion + 6 debounce - 3 checkpoints revertidos = 232).
+- Suite estable en ~13 segundos.
