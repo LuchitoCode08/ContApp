@@ -232,7 +232,7 @@ La propia app puede verificar si hay una versión nueva:
 - Al iniciar (silencioso): chequea GitHub API; si hay update, abre un diálogo modal.
 - Botón "🔄 Actualizar" en el footer: chequeo manual con feedback inmediato.
 
-Ver `app/updater/` para la implementación. El updater consulta `https://api.github.com/repos/LuchitoCode08/Demo/releases/latest` (gratis, sin auth, ~60 requests/hora por IP).
+Ver `app/updater/` para la implementación. El updater consulta `https://api.github.com/repos/LuchitoCode08/ContApp/releases/latest` (gratis, sin auth, ~60 requests/hora por IP).
 
 ## Estado
 

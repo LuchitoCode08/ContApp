@@ -19,7 +19,7 @@ APP_NAME: str = "ContApp"
 
 # Repo de GitHub donde se publican los releases.
 # Lo usa el updater para consultar la ultima version disponible.
-GITHUB_REPO: str = "LuchitoCode08/Demo"
+GITHUB_REPO: str = "LuchitoCode08/ContApp"
 
 # URL base de la API publica de GitHub.
 GITHUB_API_BASE: str = "https://api.github.com"

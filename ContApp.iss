@@ -41,9 +41,9 @@ AppId={{A1B2C3D4-E5F6-4A7B-8C9D-0E1F2A3B4C5D}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher=LuchitoCode08
-AppPublisherURL=https://github.com/LuchitoCode08/Demo
-AppSupportURL=https://github.com/LuchitoCode08/Demo/issues
-AppUpdatesURL=https://github.com/LuchitoCode08/Demo/releases
+AppPublisherURL=https://github.com/LuchitoCode08/ContApp
+AppSupportURL=https://github.com/LuchitoCode08/ContApp/issues
+AppUpdatesURL=https://github.com/LuchitoCode08/ContApp/releases
 ; Inno Setup 6.x NO reconoce la directiva ``AppDescription`` en
 ; ``[Setup]``. La descripcion se setea via ``AppComments`` (que aparece
 ; en el panel de "Agregar o quitar programas" de Windows) o via
