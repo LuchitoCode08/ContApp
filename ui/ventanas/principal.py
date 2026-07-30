@@ -47,7 +47,9 @@ from ui.recursos.tema import (
     ESPACIO_LG,
     ESPACIO_SM,
     OSCURO,
+    _build_palette,
     _paleta,
+    _qss_global,
     aplicar_tema,
     tema_actual,
 )
@@ -511,6 +513,10 @@ class VentanaPrincipal(QMainWindow):
         # se cierra dentro de la ventana del debounce.
         self._cfg.tema = nuevo
         self._cfg.guardar_preferencias()
+        # Bumping ``_tema_version`` invalida cualquier chunk pendiente
+        # del toggle anterior (asi no procesa widgets con la paleta
+        # equivocada si el usuario spammea el toggle).
+        self._tema_version = getattr(self, "_tema_version", 0) + 1
         # Agendar la aplicacion visual con debounce.
         if not hasattr(self, "_tema_timer") or self._tema_timer is None:
             self._tema_timer = QTimer(self)
@@ -525,11 +531,69 @@ class VentanaPrincipal(QMainWindow):
         nuevo = getattr(self, "_tema_modo_pendiente", None)
         if nuevo is None:
             return
-        aplicar_tema(QApplication.instance(), nuevo)
+        # Actualizar el singleton global ANTES de leer la paleta, asi
+        # ``_paleta()`` y ``_qss_global()`` devuelven el tema NUEVO.
+        import ui.recursos.tema as tema_mod
+        tema_mod._MODO = nuevo
+        p = tema_mod._paleta()
+        app = QApplication.instance()
+        # Fase 1: QSS global + paleta (instantaneo para el usuario).
+        app.setStyleSheet(_qss_global(p))
+        app.setPalette(_build_palette(p))
+        # Fase 2: widget-level en chunks.
+        widgets_con_tema = [
+            w for w in app.allWidgets()
+            if callable(getattr(w, "_aplicar_tema", None))
+        ]
+        self._tema_widgets_pendientes = widgets_con_tema
+        self._tema_chunk_size = 8
+        self._tema_chunk_paleta = p
+        # Capturar la version actual para que el chunk pueda detectar
+        # si fue invalidado por un toggle posterior.
+        self._tema_version_pendiente = getattr(self, "_tema_version", 0)
+        if widgets_con_tema:
+            self._aplicar_tema_siguiente_chunk()
+        else:
+            self._tema_chunk_paleta = None
+        # Boton + status bar: instantaneo.
         self._actualizar_btn_tema()
         self.statusBar().showMessage(
             f"Tema {nuevo} activado", 2000,
         )
+
+    def _aplicar_tema_siguiente_chunk(self) -> None:
+        """Aplica el siguiente chunk de widgets con ``_aplicar_tema``.
+
+        Si ``_tema_version`` cambio desde que se inicio este chunk,
+        el toggle anterior fue reemplazado por uno nuevo: dejamos
+        de procesar para no aplicar la paleta equivocada.
+        """
+        widgets = getattr(self, "_tema_widgets_pendientes", [])
+        chunk_size = getattr(self, "_tema_chunk_size", 8)
+        p = getattr(self, "_tema_chunk_paleta", None)
+        # Si hubo un nuevo toggle, _tema_version incremento.
+        version_actual = getattr(self, "_tema_version", 0)
+        version_pendiente = getattr(self, "_tema_version_pendiente", 0)
+        if version_actual != version_pendiente:
+            # Cancelar: el toggle nuevo se hara cargo.
+            self._tema_widgets_pendientes = []
+            self._tema_chunk_paleta = None
+            return
+        if not widgets or p is None:
+            self._tema_widgets_pendientes = []
+            self._tema_chunk_paleta = None
+            return
+        chunk = widgets[:chunk_size]
+        self._tema_widgets_pendientes = widgets[chunk_size:]
+        for w in chunk:
+            try:
+                w._aplicar_tema(p)
+            except Exception:
+                pass
+        if self._tema_widgets_pendientes:
+            QTimer.singleShot(0, self._aplicar_tema_siguiente_chunk)
+        else:
+            self._tema_chunk_paleta = None
 
     def _actualizar_btn_tema(self) -> None:
         """Pone el icono del boton segun el modo actual."""

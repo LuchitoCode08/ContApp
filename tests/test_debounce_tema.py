@@ -141,30 +141,31 @@ def test_toggle_tema_no_aplica_inmediatamente(
 def test_aplicar_tema_se_ejecuta_despues_del_debounce(
     qt_app, tmp_path, monkeypatch,
 ) -> None:
-    """Despues de esperar el QTimer, ``aplicar_tema`` debe ejecutarse."""
+    """Despues de esperar el QTimer, ``_aplicar_tema_diferido`` debe ejecutarse."""
     import app.config as app_cfg
     monkeypatch.setattr(app_cfg.Config, "guardar_preferencias", lambda self: None)
-    import ui.ventanas.principal as principal_mod
-    llamadas: list[str] = []
-
-    def fake_aplicar(app, modo):
-        llamadas.append(modo)
-
-    monkeypatch.setattr(principal_mod, "aplicar_tema", fake_aplicar)
-
+    # Spy sobre _aplicar_tema_diferido (la nueva implementacion chunked
+    # no llama a ``aplicar_tema()`` global directamente).
     from ui.ventanas.principal import VentanaPrincipal
     v = VentanaPrincipal()
     try:
+        llamadas: list[int] = []
+        original = v._aplicar_tema_diferido
+
+        def spy():
+            llamadas.append(1)
+            # No ejecutamos el original (que haria cambios reales).
+            pass
+
+        v._aplicar_tema_diferido = spy
         v._toggle_tema()
-        # Esperar el debounce (100ms + un poco de margen).
+        # Esperar el debounce (100ms + margen).
         loop = QEventLoop()
         QTimer.singleShot(200, loop.quit)
         loop.exec()
         assert llamadas, (
-            "aplicar_tema no se ejecuto despues del debounce."
+            "_aplicar_tema_diferido no se ejecuto despues del debounce."
         )
-        # El modo aplicado debe ser el nuevo (no el inicial).
-        assert llamadas[-1] in ("claro", "oscuro")
     finally:
         if hasattr(v, "_tema_timer") and v._tema_timer is not None:
             v._tema_timer.stop()
@@ -178,28 +179,26 @@ def test_aplicar_tema_se_ejecuta_despues_del_debounce(
 def test_multiples_toggles_rapidos_aplican_una_sola_vez(
     qt_app, tmp_path, monkeypatch,
 ) -> None:
-    """5 toggles en <100ms -> aplicar_tema se ejecuta 1 sola vez."""
+    """5 toggles en <100ms -> _aplicar_tema_diferido se ejecuta 1 sola vez."""
     import app.config as app_cfg
     monkeypatch.setattr(app_cfg.Config, "guardar_preferencias", lambda self: None)
-    import ui.ventanas.principal as principal_mod
-    llamadas: list[str] = []
-
-    def fake_aplicar(app, modo):
-        llamadas.append(modo)
-
-    monkeypatch.setattr(principal_mod, "aplicar_tema", fake_aplicar)
-
     from ui.ventanas.principal import VentanaPrincipal
     v = VentanaPrincipal()
     try:
+        llamadas: list[int] = []
+        original = v._aplicar_tema_diferido
+
+        def spy():
+            llamadas.append(1)
+
+        v._aplicar_tema_diferido = spy
         # 5 toggles consecutivos sin esperar al debounce.
         for _ in range(5):
             v._toggle_tema()
-        # Esperar el debounce (200ms es suficiente para 1 solo ciclo).
+        # Esperar el debounce (250ms es suficiente para 1 solo ciclo).
         loop = QEventLoop()
         QTimer.singleShot(250, loop.quit)
         loop.exec()
-        # Solo 1 aplicacion al final (no 5).
         assert len(llamadas) == 1, (
             f"Esperaba 1 sola aplicacion al final del debounce, "
             f"pero hubo {len(llamadas)}: {llamadas}"
@@ -216,20 +215,20 @@ def test_ultimo_toggle_es_el_que_se_aplica(
     """Tras N toggles, el modo aplicado es el ULTIMO (no el primero)."""
     import app.config as app_cfg
     monkeypatch.setattr(app_cfg.Config, "guardar_preferencias", lambda self: None)
-    import ui.ventanas.principal as principal_mod
-    llamadas: list[str] = []
-
-    def fake_aplicar(app, modo):
-        llamadas.append(modo)
-
-    monkeypatch.setattr(principal_mod, "aplicar_tema", fake_aplicar)
-
     from ui.ventanas.principal import VentanaPrincipal
     v = VentanaPrincipal()
     try:
         # Capturar el modo INICIAL antes de togglear.
         from ui.recursos.tema import tema_actual
         modo_inicial = tema_actual()
+        # Spy sobre _aplicar_tema_diferido para capturar el modo al aplicarlo.
+        modos_aplicados: list[str] = []
+        original = v._aplicar_tema_diferido
+
+        def spy():
+            modos_aplicados.append(getattr(v, "_tema_modo_pendiente", "?"))
+
+        v._aplicar_tema_diferido = spy
         # 3 toggles: par / impar / par -> termina en el opuesto al inicial.
         for _ in range(3):
             v._toggle_tema()
@@ -238,10 +237,10 @@ def test_ultimo_toggle_es_el_que_se_aplica(
         QTimer.singleShot(200, loop.quit)
         loop.exec()
         # El modo aplicado NO debe ser el inicial (porque hicimos 3 toggles).
-        assert llamadas, "No se aplico el tema"
-        assert llamadas[-1] != modo_inicial, (
+        assert modos_aplicados, "No se aplico el tema"
+        assert modos_aplicados[-1] != modo_inicial, (
             f"El ultimo toggle deberia haber cambiado el tema "
-            f"(inicial={modo_inicial}, aplicado={llamadas[-1]})."
+            f"(inicial={modo_inicial}, aplicado={modos_aplicados[-1]})."
         )
     finally:
         if hasattr(v, "_tema_timer") and v._tema_timer is not None:

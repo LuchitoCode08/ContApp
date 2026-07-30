@@ -225,15 +225,36 @@ class PantallaConfiguracion(QWidget):
                 f"color: {paleta.fg_muted}; font-size: 12px;"
             )
         if hasattr(self, "btn_limpiar") and self.btn_limpiar is not None:
+            # Estilo explicito con fondo transparente para evitar que el
+            # background-color del QSS global #danger (rojo intenso) tape
+            # el texto. Asi solo se ve el borde + texto rojo en estado
+            # normal, y al hover el fondo se vuelve gris claro.
             self.btn_limpiar.setStyleSheet(
-                f"QPushButton {{ color: {paleta.danger};"
-                f" border: 1px solid {paleta.danger}; }}"
-                f"QPushButton:hover {{ background-color: {paleta.surface_alt};"
-                " border-color: #B91C1C; }"
+                f"QPushButton {{"
+                f" color: {paleta.danger};"
+                f" background-color: transparent;"
+                f" border: 1px solid {paleta.danger};"
+                f" border-radius: 4px;"
+                f" padding: 6px 12px;"
+                f" font-weight: 600;"
+                f" }}"
+                f"QPushButton:hover {{"
+                f" background-color: {paleta.surface_alt};"
+                f" }}"
+                f"QPushButton:pressed {{"
+                f" background-color: {paleta.border};"
+                f" }}"
+                f"QPushButton:disabled {{"
+                f" color: {paleta.fg_disabled};"
+                f" border-color: {paleta.border};"
+                f" }}"
             )
-        # Forzar el repintado de la tabla con los nuevos colores de fila.
-        if hasattr(self, "_registros") and self._registros:
-            self._aplicar_filtros()
+        # Repintar SOLO los colores de las celdas existentes (no
+        # re-aplicar filtros completos). Esto evita recorrer todos los
+        # registros de nuevo, que era el cuello de botella al cambiar
+        # de tema (la app se colgaba unos segundos).
+        if hasattr(self, "_tabla") and self._tabla.rowCount() > 0:
+            self._repintar_colores_tabla()
 
         # Senales automaticas para algunos filtros.
         self._fecha_desde.dateChanged.connect(
@@ -343,6 +364,47 @@ class PantallaConfiguracion(QWidget):
                 items[3].setFont(font)
             elif prueba is False:
                 items[3].setForeground(QColor("#2E7D32"))
+
+    def _repintar_colores_tabla(self) -> None:
+        """Repinta SOLO los colores (bg/fg) de las celdas existentes.
+
+        Es la version rapida que se invoca al cambiar de tema. NO
+        recrea los ``QTableWidgetItem`` (eso era el cuello de botella
+        en `_llenar_tabla` cuando la tabla tenia cientos de filas).
+
+        Asume que las celdas ya estan pobladas por `_llenar_tabla`
+        y que la columna 2 (Nivel) tiene el nivel del registro, lo
+        cual usamos para calcular el color de fondo.
+        """
+        from ui.recursos.tema import _paleta
+        p = _paleta()
+        filas = self._tabla.rowCount()
+        for i in range(filas):
+            item_nivel = self._tabla.item(i, 2)
+            if item_nivel is None:
+                continue
+            nivel = item_nivel.text()
+            bg = _color_nivel(nivel)
+            # Aplicar fg/bg a las 6 columnas.
+            for col in range(6):
+                item = self._tabla.item(i, col)
+                if item is None:
+                    continue
+                item.setForeground(QColor(p.fg))
+                item.setBackground(QColor(bg))
+            # Highlight de columna Modo (PRUEBA en naranja, PROD en verde).
+            item_modo = self._tabla.item(i, 3)
+            if item_modo is None:
+                continue
+            texto_modo = item_modo.text()
+            if texto_modo == "PRUEBA":
+                item_modo.setBackground(QColor("#FFE0B2"))
+                item_modo.setForeground(QColor("#E65100"))
+                font = item_modo.font()
+                font.setBold(True)
+                item_modo.setFont(font)
+            elif texto_modo == "PROD":
+                item_modo.setForeground(QColor("#2E7D32"))
 
     # -- Exportacion ------------------------------------------------
 

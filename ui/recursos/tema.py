@@ -464,12 +464,17 @@ def aplicar_tema(app: QApplication, modo: Literal["claro", "oscuro"]) -> None:
 
 
 def aplicar_a_widget(widget, p: Paleta) -> None:
-    """Si el widget expone ``_aplicar_tema(paleta)``, lo invoca recursivamente.
+    """Si el widget expone ``_aplicar_tema(paleta)``, lo invoca.
 
     Patron de uso: cualquier widget que tenga colores hardcoded en su
     ``setStyleSheet`` debe implementar ``_aplicar_tema(self, paleta)`` para
     actualizarse al cambiar de tema. Los colores que dependen del proceso
     deben pasarse por parametro (ej: ``color_proceso(nombre)``).
+
+    NOTA: NO recorremos ``findChildren()`` recursivamente porque
+    ``aplicar_tema()`` ya itera ``app.allWidgets()``, que devuelve TODOS
+    los widgets de la app (incluyendo hijos). Hacer ``findChildren()``
+    aca era O(N^2): N widgets * N busquedas = N^2 operaciones.
     """
     fn = getattr(widget, "_aplicar_tema", None)
     if callable(fn):
@@ -477,20 +482,29 @@ def aplicar_a_widget(widget, p: Paleta) -> None:
             fn(p)
         except Exception:
             pass
-    # Recursion a hijos.
-    for child in widget.findChildren(object):
-        fn2 = getattr(child, "_aplicar_tema", None)
-        if callable(fn2):
-            try:
-                fn2(p)
-            except Exception:
-                pass
 
 
 def _color(hex_str: str):
     """Convierte un hex (#RRGGBB) a QColor."""
     from PySide6.QtGui import QColor
     return QColor(hex_str)
+
+
+def _build_palette(p: Paleta):
+    """Construye la QPalette global de la app a partir de una Paleta."""
+    from PySide6.QtGui import QPalette
+    pal = QPalette()
+    pal.setColor(QPalette.ColorRole.Window, _color(p.bg))
+    pal.setColor(QPalette.ColorRole.WindowText, _color(p.fg))
+    pal.setColor(QPalette.ColorRole.Base, _color(p.surface))
+    pal.setColor(QPalette.ColorRole.AlternateBase, _color(p.surface_alt))
+    pal.setColor(QPalette.ColorRole.Text, _color(p.fg))
+    pal.setColor(QPalette.ColorRole.Button, _color(p.surface))
+    pal.setColor(QPalette.ColorRole.ButtonText, _color(p.fg))
+    pal.setColor(QPalette.ColorRole.Highlight, _color(p.primary))
+    pal.setColor(QPalette.ColorRole.HighlightedText, _color(p.on_primary))
+    pal.setColor(QPalette.ColorRole.PlaceholderText, _color(p.fg_disabled))
+    return pal
 
 
 def color_proceso(nombre: str) -> str:
