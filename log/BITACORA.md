@@ -541,3 +541,73 @@ Solicitado por el usuario: el listado plano de 8 JSONs era poco legible.
 - Plan completo en `/memories/session/plan.md`.
 - Tests: **232 passed, 4 skipped** (193 originales + 16 progreso + 20 configuracion + 6 debounce - 3 checkpoints revertidos = 232).
 - Suite estable en ~13 segundos.
+
+
+## Sesion 2026-07-30
+
+**Resumen:** Refactor v2 (EventBus + DI + servicios) + intento completo de release v1.0.1 automatizado via GitHub Actions. **Resultado: codigo production-ready, pero el release automatico queda (imposible) por ahora - los errores de Inno Setup se acumulan y no encontramos el root cause a tiempo.**
+
+### [x] Completadas
+
+- [x] **Refactor v2 - Capa de infraestructura**: crear carpetas `services/`, `repositories/`, `validators/`, `events/`, `models/` sin tocar la logica de procesos ni UI. Phase 1 del refactor (sin dividir procesos todavia).
+- [x] **EventBus thread-safe** en `events/bus.py`: pub/sub con `event_bus` singleton, eventos frozen-dataclasses (`ProgresoProceso`, `ProcesoFinalizado`, `ProcesoCancelado`, `JsonEditado`, `TemaCambiado`).
+- [x] **Contenedor de dependencias** en `app/container.py`: mini-DI sin librerias externas, factory + singleton + reset.
+- [x] **SettingsService** en `services/settings_service.py`: lee/escribe `data/settings.json` con migracion automatica desde el legacy `data/usuario.json`.
+- [x] **BackupService** y **ReporteService** como placeholders funcionales.
+- [x] **`app/bootstrap.py`**: registra las factories por defecto en el container.
+- [x] **19 tests nuevos** para EventBus, Container, SettingsService (251 + 19 = 270? no: 232 + 19 = **251 passed, 4 skipped**).
+- [x] **Fix menor del QTreeWidget**: removi hardcoded colors que se rompian en modo oscuro, agregue `_repintar_items_arbol()` y `_pintar_item_segun_paleta()`. (REVERTIDO por pedido del usuario, dejo el arbol como estaba).
+- [x] **context.md** generado en `C:\Users\lfloaiza\Downloads\context_app.md` con el estado actual del proyecto (descarta release a GitHub).
+- [x] **Renombre de repo Demo -> ContApp**: actualizado `app/version.py` (GITHUB_REPO), `ContApp.iss` (3 URLs), `README.md` (documentacion del updater).
+
+### [ ] Pendientes
+
+- [ ] **(imposible) Release v1.0.1 automatizado via GitHub Actions**: despues de 8+ intentos con distintos fixes (regex del tag, ContApp.spec versionado, AppDescription -> AppComments, DefaultDirName agregado, escape de doble llave en {cm:...}, ExpandConstant, SetupSetting, reescritura completa del .iss), el workflow de GitHub Actions sigue fallando en el paso de Inno Setup. Cada vez que se arregla un error aparece otro. Ver seccion de Lecciones abajo.
+- [ ] **Buscar como realizar el release de manera manual** (decidio el usuario el 2026-07-30).
+- [ ] **Mejorar validador de ContApp.iss**: agregar mas checks automaticos (precedencia de llaves en {cm:...}, escape correcto de comillas simples en strings Pascal, etc.).
+- [ ] **Tear down de workflows viejos**: borrar runs fallidos en https://github.com/LuchitoCode08/Demo/actions para limpiar el historial.
+- [ ] **Reescribir manualmente el instalador .iss desde una guia minima probada**: si se intenta de nuevo el release automatico, partir de un .iss de ejemplo que funcione en lugar de iterar sobre el actual.
+
+### [ ] Proxima sesion
+
+- [ ] **Release manual**: seguir las instrucciones en https://www.jrsoftware.org/isinfo.php para generar el instalador localmente y subirlo manualmente a GitHub Releases (sin CI/CD).
+- [ ] **Refactor v2 - Phase 2** (cuando se retome): dividir procesos grandes en `parser`, `transformador`, `exportador`, `reglas` (cambio #2 del `context_refactorizacion.md`).
+
+### Commits de esta sesion
+
+```
+41cb4ea fix: rename GitHub repo references from Demo to ContApp
+36627f2 fix(installer): use SetupSetting to read AppName from Pascal Script
+60d10e9 fix(installer): remove {#UserConst} from {cm:...} parameters
+4fce686 fix(installer): use ExpandConstant for MyAppName in Pascal Script
+0b90df0 fix(installer): escape {#Const} with double braces in {cm:...} params
+548cb14 fix(installer): add required DefaultDirName directive
+1cf3814 fix(installer): replace AppDescription with AppComments in [Setup]
+39f65fe ci: re-add workflows and bump to v1.0.1 for clean release restart
+f1d209b refactor(v2): infrastructure layer (events, DI, services, settings)
+```
+
+### Lecciones aprendidas (release automatico)
+
+**Causa raiz de los fallos repetidos en Inno Setup:**
+
+1. **El preprocesador de Inno Setup y los strings runtime son distintos.** Directivas como `{#MyAppName}` SOLO se expanden en directivas `.iss` (campos de Setup, Files, etc.). NO se expanden dentro de strings runtime como `{cm:LaunchProgram,...}` ni dentro de strings literales de Pascal Script. La doble llave `{{` solo escapa un `{` literal, no expande constantes.
+
+2. **Para acceder a valores runtime desde Pascal Script usar:**
+   - `SetupSetting('AppName', '')` — lee setting de [Setup] ya expandido
+   - `ExpandConstant('{app}')` — expande constantes built-in runtime como `{app}`, `{group}`
+   - NUNCA `ExpandConstant('{#MyAppName}')` — eso compila a Pascal con un valor que no puede parsear (Type mismatch en columna 42).
+
+3. **Directivas requeridas en [Setup]:** AppName, AppVersion, AppPublisher, **DefaultDirName** (esta ultima se olvida porque DisableDirPage=yes la hace "invisible").
+
+4. **Directivas validas en Inno Setup 6.x NO incluyen:** `AppDescription` (usar `AppComments` o `VersionInfoDescription`).
+
+5. **`ContApp.spec` debe estar versionado en git.** El `.gitignore` tenia `*.spec` que excluia todos los specs; habia que usar `!ContApp.spec` para re-incluir el nuestro.
+
+6. **GitHub no re-dispara el workflow si el SHA del tag no cambia.** Para forzar una nueva corrida hay que borrar el tag, esperar unos segundos, y re-pushearlo. Si el SHA es el mismo, no hay nuevo evento push.
+
+7. **El prefijo `v` del tag es requerido** por la regex del workflow: `'v[0-9]+.[0-9]+.[0-9]+'`.
+
+### Proximos pasos
+
+El usuario decidio el 2026-07-30 que el release automatico (imposible) queda pendiente y se va a hacer de manera manual. La proxima sesion deberia arrancar por ahi: investigar como generar el `.exe` localmente con ISCC.exe y subirlo manualmente a GitHub Releases.
