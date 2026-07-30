@@ -109,7 +109,9 @@ Source: "dist\ContApp\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 [Icons]
 ; Menu Inicio.
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
+; Mismo escape que en [Run]: las constantes {#...} dentro de
+; {cm:...} se referencian con doble llave {{#...}}.
+Name: "{group}\{cm:UninstallProgram,{{#MyAppName}}}"; Filename: "{uninstallexe}"
 ; Escritorio (solo si el usuario marco el checkbox).
 Name: "{commondesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
@@ -117,7 +119,10 @@ Name: "{commondesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: 
 ; Preguntar al final si quiere ejecutar la app.
 ; Importante: dentro de {cm:LaunchProgram,...} las constantes preprocesadas
 ; con {#...} se referencian como {{#...}} (doble llave para escapar).
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent
+; Sin esto el compilador aborta con "Unknown constant ContApp" en
+; esta linea (porque {#MyAppName} no se expande dentro de un parametro
+; de {cm:...}, hay que escaparlo con doble llave).
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{{#MyAppName}}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 ; NO borrar data/, log/, ni jsons/ al desinstalar: el usuario puede querer
