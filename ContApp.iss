@@ -66,6 +66,13 @@ SolidCompression=yes
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 
+; Directorio de instalacion por defecto. Requerido por Inno Setup
+; aunque tengamos ``DisableDirPage=yes`` (la directiva es obligatoria,
+; solo ocultamos la pagina para que el usuario no la vea).
+; Con ``PrivilegesRequired=lowest`` lo llevamos a %LOCALAPPDATA%
+; (no a Program Files) para no pedir UAC.
+DefaultDirName={localappdata}\{#MyAppName}
+
 ; Version de Windows minima: Windows 10.
 MinVersion=10.0
 
