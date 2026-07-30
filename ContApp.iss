@@ -109,20 +109,28 @@ Source: "dist\ContApp\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 [Icons]
 ; Menu Inicio.
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-; Mismo escape que en [Run]: las constantes {#...} dentro de
-; {cm:...} se referencian con doble llave {{#...}}.
-Name: "{group}\{cm:UninstallProgram,{{#MyAppName}}}"; Filename: "{uninstallexe}"
+; El icono de desinstalar usa {cm:UninstallProgram,...} para mostrar
+; "Desinstalar <nombre>". El preprocesador de Inno NO expande
+; {#MyAppName} dentro de este string runtime. La doble llave tampoco
+; funciona (eso solo escapa un { literal). Por eso usamos el nombre
+; de archivo del desinstalador directamente con la constante builtin
+; ``{uninstallexe}`` y dejamos que el Description builtin de Inno
+; (que ya incluye el nombre del app) hable por nosotros.
+Name: "{group}\{cm:UninstallProgram}"; Filename: "{uninstallexe}"
 ; Escritorio (solo si el usuario marco el checkbox).
 Name: "{commondesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
 ; Preguntar al final si quiere ejecutar la app.
-; Importante: dentro de {cm:LaunchProgram,...} las constantes preprocesadas
-; con {#...} se referencian como {{#...}} (doble llave para escapar).
-; Sin esto el compilador aborta con "Unknown constant ContApp" en
-; esta linea (porque {#MyAppName} no se expande dentro de un parametro
-; de {cm:...}, hay que escaparlo con doble llave).
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{{#MyAppName}}}"; Flags: nowait postinstall skipifsilent
+; El preprocesador de Inno Setup NO expande {#MyAppName} dentro de
+; strings que se evaluan en runtime (como la Description de {cm:...}).
+; Si lo pones ahi, el compilador aborta con "Unknown constant ContApp".
+; Solucion: usar la constante builtin {app} que SI es runtime, y
+; concatenar el nombre de la app en Pascal Script via ExpandConstant.
+; Pero como el campo Description solo acepta un literal, lo mas
+; simple es NO incluir el nombre de la app ahi - el {cm:LaunchProgram}
+; ya muestra el nombre del archivo a ejecutar (ContApp.exe).
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppExeName}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 ; NO borrar data/, log/, ni jsons/ al desinstalar: el usuario puede querer
