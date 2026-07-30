@@ -117,7 +117,7 @@ Name: "{commondesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: 
 ; Preguntar al final si quiere ejecutar la app.
 ; Importante: dentro de {cm:LaunchProgram,...} las constantes preprocesadas
 ; con {#...} se referencian como {{#...}} (doble llave para escapar).
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{{#MyAppName}}}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
 ; NO borrar data/, log/, ni jsons/ al desinstalar: el usuario puede querer
