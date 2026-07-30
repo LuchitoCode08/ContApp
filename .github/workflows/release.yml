@@ -55,7 +55,7 @@ jobs:
             $version = "${{ inputs.version }}"
           } else {
             # Fallback: leer de app/version.py
-            $version = Select-String -Path "app\version.py" -Pattern '__version__\s*=\s*"([^"]+)"' | ForEach-Object { $_.Matches.Groups[1].Value }
+            $version = Select-String -Path "app\version.py" -Pattern '__version__\s*:\s*[^=]*=\s*"([^"]+)"' | ForEach-Object { $_.Matches.Groups[1].Value }
           }
           Write-Host "Version: $version"
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
@@ -63,7 +63,7 @@ jobs:
       - name: Verificar coincidencia con app/version.py
         shell: pwsh
         run: |
-          $fileVersion = Select-String -Path "app\version.py" -Pattern '__version__\s*=\s*"([^"]+)"' | ForEach-Object { $_.Matches.Groups[1].Value }
+          $fileVersion = Select-String -Path "app\version.py" -Pattern '__version__\s*:\s*[^=]*=\s*"([^"]+)"' | ForEach-Object { $_.Matches.Groups[1].Value }
           if ($fileVersion -ne "${{ steps.version.outputs.VERSION }}") {
             Write-Host "::error::La version del tag (${{ steps.version.outputs.VERSION }}) no coincide con app/version.py ($fileVersion)"
             exit 1
