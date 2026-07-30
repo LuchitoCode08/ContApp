@@ -139,6 +139,10 @@ class PantallaDiccionarios(QWidget):
         self._arbol.setIndentation(16)
         self._arbol.setExpandsOnDoubleClick(True)
         self._arbol.itemSelectionChanged.connect(self._on_seleccionar_json)
+        # Lazy load: solo cargamos los JSONs de un proceso cuando el
+        # usuario expande su seccion. Asi abrir la pantalla es O(1)
+        # en cantidad de JSONs, sin importar cuantos haya.
+        self._arbol.itemExpanded.connect(self._on_expandir_seccion)
         izq_layout.addWidget(self._arbol, 1)
         splitter.addWidget(panel_izq)
 
@@ -341,27 +345,34 @@ class PantallaDiccionarios(QWidget):
         return _paleta()
 
     def _cargar_lista_jsons(self) -> None:
-        """Descubre todos los JSONs bajo JSONS_DIR y los agrupa por proceso."""
+        """Descubre los PROCESOS bajo JSONS_DIR (secciones del tree).
+
+        Lazy load: NO lista los archivos JSON todavia. Solo agrega una
+        seccion por proceso con un placeholder "Cargando...". Cuando
+        el usuario expande la seccion, ``_on_expandir_seccion`` lee el
+        directorio y reemplaza el placeholder con los items reales.
+
+        Asi abrir esta pantalla es O(procesos) y no O(jsons). Para 50+
+        JSONs esto evita glob + miles de QTreeWidgetItem al inicio.
+        """
         self._items.clear()
         self._arbol.clear()
         if not JSONS_DIR.exists():
             return
 
-        # Agrupamos por proceso: {proceso_codigo: [(ruta, nombre_legible), ...]}
-        grupos = {}
+        # Una seccion por proceso. La carga de archivos se difiere a
+        # cuando se expande. Filtramos: carpetas que empiezan con "_"
+        # o "." son internas (backups, caches) y NO se muestran.
+        # Las carpetas de proceso SIN JSONs SI se muestran (puede
+        # ser un proceso nuevo que el usuario esta por poblar) y al
+        # expandir el usuario vera "(sin archivos JSON)".
+        # El glob NO se hace aca -> seguimos siendo O(procesos).
         for proc_dir in sorted(JSONS_DIR.iterdir()):
             if not proc_dir.is_dir():
                 continue
-            archivos = []
-            for jf in sorted(proc_dir.glob("*.json")):
-                nombre_legible = _nombre_json_legible(proc_dir.name, jf.name)
-                archivos.append((jf, nombre_legible))
-            if archivos:
-                grupos[proc_dir.name] = archivos
-
-        # Construimos el tree con una seccion por proceso.
-        for proceso_codigo, archivos in grupos.items():
-            seccion = QTreeWidgetItem([_nombre_proceso(proceso_codigo)])
+            if proc_dir.name.startswith(("_", ".")):
+                continue
+            seccion = QTreeWidgetItem([_nombre_proceso(proc_dir.name)])
             font = QFont()
             font.setBold(True)
             font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
@@ -369,13 +380,61 @@ class PantallaDiccionarios(QWidget):
             seccion.setBackground(0, QColor("#F2F4F8"))
             seccion.setForeground(0, QColor("#1A1F2C"))
             seccion.setFlags(seccion.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+            # Guardamos el codigo de proceso en UserRole de la seccion
+            # para que _on_expandir_seccion sepa que directorio leer.
+            seccion.setData(0, Qt.ItemDataRole.UserRole, proc_dir.name)
+            # Marcamos "no expandida todavia" con un hijo placeholder.
+            placeholder = QTreeWidgetItem(["Cargando..."])
+            placeholder.setFlags(placeholder.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+            placeholder.setForeground(0, QColor("#9AA0A6"))
+            seccion.addChild(placeholder)
             self._arbol.addTopLevelItem(seccion)
-            for ruta, nombre_legible in archivos:
-                item = QTreeWidgetItem([nombre_legible])
-                item.setData(0, Qt.ItemDataRole.UserRole, str(ruta))
-                seccion.addChild(item)
-                self._items.append((ruta, proceso_codigo))
-            seccion.setExpanded(True)
+            # NO se hace setExpanded(True) -> quedan colapsadas.
+
+    def _on_expandir_seccion(self, item: QTreeWidgetItem) -> None:
+        """Lazy load: carga los JSONs del proceso cuando se expande su seccion.
+
+        Idempotente: si la seccion ya fue expandida antes, no hace nada.
+        Si no existe el directorio, marca el error en el placeholder.
+        """
+        # Solo actuamos sobre secciones de nivel superior (no sobre items).
+        if item.parent() is not None:
+            return
+        proceso_codigo = item.data(0, Qt.ItemDataRole.UserRole)
+        if not proceso_codigo:
+            return
+        # Si el primer hijo ya NO es el placeholder, ya se cargo antes.
+        if item.childCount() == 0:
+            return
+        primer_hijo = item.child(0)
+        texto = primer_hijo.text(0)
+        if texto != "Cargando...":
+            return
+
+        proc_dir = JSONS_DIR / proceso_codigo
+        # Quitamos el placeholder.
+        item.takeChild(0)
+        if not proc_dir.exists() or not proc_dir.is_dir():
+            error_item = QTreeWidgetItem(["(directorio no disponible)"])
+            error_item.setFlags(error_item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+            error_item.setForeground(0, QColor("#9AA0A6"))
+            item.addChild(error_item)
+            return
+
+        # Cargamos los JSONs reales.
+        archivos = sorted(proc_dir.glob("*.json"))
+        if not archivos:
+            vacio = QTreeWidgetItem(["(sin archivos JSON)"])
+            vacio.setFlags(vacio.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+            vacio.setForeground(0, QColor("#9AA0A6"))
+            item.addChild(vacio)
+            return
+        for jf in archivos:
+            nombre_legible = _nombre_json_legible(proc_dir.name, jf.name)
+            child = QTreeWidgetItem([nombre_legible])
+            child.setData(0, Qt.ItemDataRole.UserRole, str(jf))
+            item.addChild(child)
+            self._items.append((jf, proc_dir.name))
 
 
     def _item_seleccionado(self) -> tuple[Path, str] | None:
