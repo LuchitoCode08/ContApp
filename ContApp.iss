@@ -144,12 +144,21 @@ begin
 end;
 
 // Mensaje custom al instalar: avisar si es upgrade.
+// Importante: dentro de Pascal Script NO se pueden usar directivas
+// preprocesadas como {#MyAppName} directamente. Hay que usar
+// ExpandConstant('{#MyAppName}') para resolverlas en runtime.
+// Sin esto el compilador aborta con "Unknown constant ContApp".
+// Ademas: la comilla simple ' dentro de un string Pascal se
+// escapa como '' (dos comillas simples).
 procedure CurStepChanged(CurStep: TSetupStep);
+var
+  AppName: String;
 begin
   if CurStep = ssInstall and IsUpgrade() then
   begin
+    AppName := ExpandConstant('{#MyAppName}');
     MsgBox(
-      'Se detectó una instalación previa de {#MyAppName}.' + #13#10 +
+      'Se detectó una instalación previa de ' + AppName + '.' + #13#10 +
       'Sus datos (preferencias y JSONs editables) se conservarán.',
       mbInformation, MB_OK
     );
