@@ -1,7 +1,8 @@
 """Proceso: Generar Comprobante Bancolombia.
 
-Entrada: ZIP con CSVs adentro (los CSV de Bancolombia tienen una sola
-columna con valores separados por coma).
+Entrada: uno o mas ZIPs con CSVs adentro (los CSV de Bancolombia tienen
+una sola columna con valores separados por coma). Los CSVs de todos los
+ZIPs se concatenan en un solo DataFrame.
 Salida: 1 Excel con 5 hojas (Original, Por cuentas, Por conceptos,
         Intereses, Gastos bancarios) + 1 archivo FOAPAL (fzrcoco.xlsx).
 
@@ -295,7 +296,13 @@ class ProcesoComprobante(ProcesoBase):
     ) -> Path:
         fecha_actual = datetime.now()
         fecha_formateada = fecha_actual - relativedelta(months=1)
-        mes_nombre = fecha_formateada.strftime("%m %B %Y").upper()
+        # Mes en espanol via MESES_ES (no dependemos del locale del
+        # sistema: %B daria el mes en ingles en la mayoria de PCs).
+        mes_nombre = (
+            f"{fecha_formateada.month:02d} "
+            f"{MESES_ES[fecha_formateada.month].upper()} "
+            f"{fecha_formateada.year}"
+        )
         archivo_final = f"{mes_nombre} Bancolombia.xlsx"
         ruta_final = carpeta / archivo_final
 
@@ -487,13 +494,20 @@ class ProcesoComprobante(ProcesoBase):
             "%s Iniciando (modo_prueba=%s)",
             self.LOG_PREFIX, modo_prueba,
         )
-        zip_path = archivos[0]
-
+        # Se procesan TODOS los ZIPs cargados: los CSVs de todos ellos
+        # se concatenan en un solo DataFrame (igual que _leer_csvs_de_zip
+        # concatena los CSVs dentro de un ZIP).
+        copias: list[pd.DataFrame] = []
         try:
-            copia = self._leer_csvs_de_zip(zip_path)
+            for zip_path in archivos:
+                copias.append(self._leer_csvs_de_zip(zip_path))
         except Exception as e:
             return ResultadoProceso(exito=False, mensaje=f"No se pudo leer el ZIP: {e}")
-        log().info("%s CSV(s) leido(s): %d fila(s)", self.LOG_PREFIX, len(copia))
+        copia = pd.concat(copias, ignore_index=True) if copias else pd.DataFrame()
+        log().info(
+            "%s %d ZIP(s) leido(s): %d fila(s)",
+            self.LOG_PREFIX, len(archivos), len(copia),
+        )
 
         por_cuentas, por_conceptos, intereses, gastos = self._copy_data(copia)
 

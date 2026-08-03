@@ -197,3 +197,22 @@ def test_ejecutar_zip_solo_campos_basicos(
 def test_log_prefix_es_el_del_proceso(proceso: ProcesoComprobante) -> None:
     """El prefijo de log sigue el patron [Nombre]."""
     assert proceso.LOG_PREFIX == "[Comprobante]"
+
+
+def test_ejecutar_procesa_todos_los_zips(
+    proceso: ProcesoComprobante,
+    zip_sintetico: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regresion: cuando se cargan varios ZIPs, se procesan TODOS
+    (antes solo se leia ``archivos[0]`` y el resto se ignoraba)."""
+    monkeypatch.setattr("procesos.comprobante.RESULTADOS_DIR", tmp_path)
+    segundo_zip = tmp_path / "segundo.zip"
+    _crear_zip_sintetico(segundo_zip)
+
+    resultado = proceso.ejecutar([zip_sintetico, segundo_zip], modo_prueba=True)
+
+    assert resultado.exito, f"Fallo: {resultado.mensaje}"
+    # El ZIP sintetico trae 3 filas (2 + 1); con 2 ZIPs deben ser 6.
+    assert resultado.detalles["filas_origen"] == 6
