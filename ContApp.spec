@@ -39,9 +39,13 @@ hiddenimports_pyside = [
     "PySide6.QtWidgets",
     "PySide6.QtPrintSupport",
 ]
-hiddenimports = collect_submodules("app") + collect_submodules("procesos") + \
-    collect_submodules("ui") + collect_submodules("utils") + \
+# Dependencias no detectadas automáticamente por PyInstaller
+hiddenimports = (
+    collect_submodules("app") + collect_submodules("procesos") + 
+    collect_submodules("ui") + collect_submodules("utils") +
+    collect_submodules("pyodc") +  # Requerido por pyarrow/pandas
     hiddenimports_pyside
+)
 
 # --------------------------------------------------------------------
 # Exclusiones: modulos que NO queremos bundlear (reducen tamano y
@@ -61,7 +65,6 @@ excludes = [
     # Networking pesado que no usamos directamente
     "http.server",
     "xmlrpc",
-    "pydoc",
     # Bases de datos que no usamos
     "sqlite3",
     "dbm",
