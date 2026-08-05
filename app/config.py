@@ -11,17 +11,20 @@ La UI y los modulos de ``core`` leen esta config; nadie lee rutas
 ni constantes del entorno directamente.
 
 Persistencia:
-- usuario, modo_prueba y tema se guardan en ``data/usuario.json``.
+- usuario, modo_prueba y tema se guardan en ``data/settings.json``.
 - Al arrancar se cargan; al cambiar el modo_prueba o el tema, se
   guardan inmediatamente.
+- ``SettingsService`` se encarga de la lectura/escritura y de la
+  migracion automatica desde el viejo ``data/usuario.json``.
 """
 from __future__ import annotations
 
-import json
 import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from services.settings_service import SettingsService
 
 
 def _detectar_raiz() -> Path:
@@ -70,7 +73,7 @@ BITACORA_DIR: Path = LOG_DIR
 BITACORA_LOG: Path = LOG_DIR / "bitacora.log"
 
 # Archivo donde se persisten las preferencias del usuario.
-PREFERENCIAS: Path = DATA_DIR / "usuario.json"
+PREFERENCIAS: Path = DATA_DIR / "settings.json"
 
 
 @dataclass
@@ -98,39 +101,41 @@ class Config:
 
     # -- Persistencia ------------------------------------------------
 
+    def _settings(self) -> SettingsService:
+        """Devuelve un SettingsService apuntando a ``PREFERENCIAS``."""
+        return SettingsService(settings_path=PREFERENCIAS)
+
     def cargar_preferencias(self) -> None:
-        """Carga preferencias desde ``data/usuario.json`` (si existe)."""
-        if not PREFERENCIAS.exists():
-            return
+        """Carga preferencias desde ``data/settings.json`` (si existe).
+
+        ``SettingsService`` migra automaticamente desde el viejo
+        ``data/usuario.json`` si es la primera vez.
+        """
         try:
-            with open(PREFERENCIAS, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except (OSError, json.JSONDecodeError):
-            return  # archivo corrupto: silencioso, no rompe el arranque
-        self.usuario = str(data.get("usuario", self.usuario)) or self.usuario
-        self.modo_prueba = bool(data.get("modo_prueba", self.modo_prueba))
-        tema = data.get("tema", self.tema)
-        if tema in ("claro", "oscuro"):
-            self.tema = tema
+            svc = self._settings()
+        except OSError:
+            return  # no se puede acceder al archivo: no rompe el arranque
+        if svc.usuario:
+            self.usuario = svc.usuario
+        self.modo_prueba = svc.modo_prueba
+        if svc.tema in ("claro", "oscuro"):
+            self.tema = svc.tema
 
     def guardar_preferencias(self) -> None:
-        """Guarda preferencias en ``data/usuario.json``.
+        """Guarda preferencias en ``data/settings.json``.
 
         No lanza excepciones: si no se puede escribir, la app sigue
         funcionando, solo no se persiste entre sesiones.
 
-        Usa ``PREFERENCIAS.parent`` (no la constante ``DATA_DIR``) para que
+        Usa ``PREFERENCIAS`` (no la constante ``DATA_DIR``) para que
         monkey-patching de ``PREFERENCIAS`` en tests funcione correctamente.
         """
         try:
-            PREFERENCIAS.parent.mkdir(parents=True, exist_ok=True)
-            data = {
-                "usuario": self.usuario,
-                "modo_prueba": self.modo_prueba,
-                "tema": self.tema,
-            }
-            with open(PREFERENCIAS, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
+            svc = self._settings()
+            svc.usuario = self.usuario
+            svc.modo_prueba = self.modo_prueba
+            svc.tema = self.tema
+            svc.save()
         except OSError:
             pass
 

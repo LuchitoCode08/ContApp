@@ -12,7 +12,7 @@ from app.config import PREFERENCIAS, Config
 @pytest.fixture
 def tmp_prefs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Redirige PREFERENCIAS a un archivo en tmp_path."""
-    destino = tmp_path / "usuario.json"
+    destino = tmp_path / "settings.json"
     monkeypatch.setattr("app.config.PREFERENCIAS", destino)
     return destino
 
@@ -74,7 +74,7 @@ def test_tema_invalido_se_descarta(tmp_prefs: Path) -> None:
 def test_guardar_crea_directorio(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Si el directorio data/ no existe, guardar_preferencias lo crea."""
     fake_data = tmp_path / "data_nuevo"
-    fake_prefs = fake_data / "usuario.json"
+    fake_prefs = fake_data / "settings.json"
     monkeypatch.setattr("app.config.DATA_DIR", fake_data)
     monkeypatch.setattr("app.config.PREFERENCIAS", fake_prefs)
 
@@ -92,7 +92,7 @@ def test_guardar_no_falla_sin_permisos(tmp_path: Path, monkeypatch: pytest.Monke
     # no se puede crear (un archivo en lugar de directorio).
     archivo_padre = tmp_path / "es_un_archivo"
     archivo_padre.write_text("bloqueo")
-    ruta_invalida = archivo_padre / "subdir" / "usuario.json"
+    ruta_invalida = archivo_padre / "subdir" / "settings.json"
     monkeypatch.setattr("app.config.DATA_DIR", archivo_padre)
     monkeypatch.setattr("app.config.PREFERENCIAS", ruta_invalida)
 

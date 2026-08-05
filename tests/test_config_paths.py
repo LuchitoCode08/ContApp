@@ -62,7 +62,7 @@ def test_data_y_log_siempre_relativos_a_raiz() -> None:
     from app.config import DATA_DIR, LOG_DIR, PREFERENCIAS, RAIZ
     assert DATA_DIR == RAIZ / "data"
     assert LOG_DIR == RAIZ / "log"
-    assert PREFERENCIAS == RAIZ / "data" / "usuario.json"
+    assert PREFERENCIAS == RAIZ / "data" / "settings.json"
 
 
 def test_resultados_siempre_en_documents() -> None:
