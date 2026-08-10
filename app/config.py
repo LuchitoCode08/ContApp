@@ -50,9 +50,27 @@ def _detectar_raiz() -> Path:
 # Raiz del proyecto.
 RAIZ: Path = _detectar_raiz()
 
+def _detectar_jsons_dir() -> Path:
+    """Devuelve la carpeta jsons/ del proyecto.
+
+    En desarrollo (``python main.py``) vive al lado de ``main.py``. En el
+    bundle de PyInstaller puede estar al lado del ejecutable (preferido,
+    para que el usuario edite las reglas) o dentro de ``_internal/jsons``
+    si PyInstaller coloco los datos ahi. Buscamos primero al lado del exe
+    y hacemos fallback a _internal/jsons.
+    """
+    lado_exe = RAIZ / "jsons"
+    if lado_exe.exists():
+        return lado_exe
+    interno = RAIZ / "_internal" / "jsons"
+    if interno.exists():
+        return interno
+    return lado_exe
+
+
 # Carpetas importantes (relativas a la raiz).
 DOCUMENTS: Path = Path.home() / "Documents"
-JSONS_DIR: Path = RAIZ / "jsons"
+JSONS_DIR: Path = _detectar_jsons_dir()
 RESULTADOS_DIR: Path = DOCUMENTS / "ContApp_Resultados"
 
 

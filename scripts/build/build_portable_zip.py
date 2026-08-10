@@ -33,6 +33,17 @@ def main() -> int:
         print(f"✗ No se encontró el bundle: {src_dir.resolve()}")
         return 1
 
+    # Asegurar que jsons/ quede al lado del .exe en el bundle portable,
+    # ademas de (o en lugar de) _internal/jsons. Asi el usuario puede
+    # editar las reglas sin tener que abrir _internal/.
+    jsons_src = Path("jsons")
+    jsons_dst = src_dir / "jsons"
+    if jsons_src.exists():
+        if jsons_dst.exists():
+            shutil.rmtree(jsons_dst)
+        shutil.copytree(jsons_src, jsons_dst)
+        print(f"Copied jsons to bundle root: {jsons_dst}")
+
     if args.version:
         zip_path = Path("dist") / f"ContApp-{args.version}-portable.zip"
     else:

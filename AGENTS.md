@@ -24,7 +24,7 @@ La app está pensada para dos usuarios de la oficina de contabilidad, cada uno c
 | GUI | **PySide6** ≥ 6.11 | Qt6, widgets nativos de Windows |
 | Procesamiento de datos | **pandas** ≥ 3.0, **openpyxl** ≥ 3.1 |  |
 | Empaquetado | **PyInstaller** ≥ 6.10 | Modo `--onedir` |
-| Instalador | **Inno Setup 6** | Script: `ContApp.iss` |
+| Instalador | **Inno Setup 6/7** | Script: `ContApp.iss`; soporta IS 6 y IS 7 |
 | Tests | **pytest** ≥ 9.0 |  |
 | Dependencia adicional | **pyodc** ≥ 1.5.0 | Requerida indirectamente por pyarrow/pandas; hay scripts de verificación que confirman que se bundlea |
 
@@ -181,7 +181,7 @@ La cancelación cooperativa usa el callback `cancelado` y la excepción `Proceso
 
 - `requirements.txt` — dependencias.
 - `ContApp.spec` — config de PyInstaller: `--onedir`, `console=False`, `jsons/` como data adjunto, hidden imports para PySide6 y submódulos propios, exclusiones para reducir tamaño.
-- `ContApp.iss` — script de Inno Setup: instala en `%LOCALAPPDATA%\ContApp`, no pide UAC, crea acceso directo en Menú Inicio, preserva `data/` y `jsons/` en upgrades.
+- `ContApp.iss` — script de Inno Setup: instala en `%LOCALAPPDATA%\ContApp`, no pide UAC, crea acceso directo en Menú Inicio, preserva `data/` y `jsons/` en upgrades. Compatible con Inno Setup 6 y 7.
 - `.github/workflows/tests.yml` — corre pytest en Windows con Python 3.14 en cada push/PR a `main`.
 - `.github/workflows/release.yml` — build + release al pushear tag `v*.*.*`. Verifica que el tag coincida con `app/version.py`, corre tests, buildea con PyInstaller, crea instalador con Inno Setup, comprime zip portable y genera un draft release en GitHub.
 - `scripts/build/` — scripts auxiliares locales para crear y revisar el bundle portable (`build_portable_zip.py`, `check_zip.py`, `verify_zip_final.py`). No los usa CI; son de uso manual en desarrollo.
@@ -380,6 +380,9 @@ dist/ContApp/
 - **Progreso:** resuelto. El callback `progreso` está restaurado en `ProcesoBase` y en las implementaciones; `WorkerEjecucion` y `tests/test_progreso.py` son coherentes.
 - **Preferencias:** resuelto. `data/usuario.json` fue migrado a `data/settings.json` y `app/config.py` delega la persistencia en `SettingsService`.
 - **Zeus bloqueado:** la UI no permite ejecutar Zeus porque `ProcesoZeus.EN_DESARROLLO = True`. Los tests de ejecución de Zeus se saltan.
+- **Ubicación de `jsons/` en el bundle:** resuelto. `app/config.py` busca `jsons/` al lado del ejecutable y hace fallback a `_internal/jsons/`. `scripts/build/build_portable_zip.py` copia `jsons/` a la raíz del bundle antes de comprimir.
+- **pyodc en el bundle:** resuelto. Se instaló `pyodc>=1.5.0` en el entorno virtual y `scripts/build/verify_zip_final.py` confirma que PyInstaller lo incluye (vía `Analysis-00.toc` cuando no aparece como archivo suelto).
+- **Compatibilidad con Inno Setup 7:** resuelto. `ContApp.iss` ahora compila correctamente en IS 7 (precedencia de `and` corregida y uso de `ExpandConstant` en lugar de `SetupSetting`).
 - **Problema ocasional con openpyxl:** warning de I/O sobre archivo cerrado en tests de cancelación; revisar cierre de `Workbook` write_only.
 - **Limpieza:** se eliminaron las carpetas vacías `models/`, `repositories/` y `validators/`, se borró la basura local de `build/`, `dist/`, `__pycache__/` y los logs de desarrollo antiguos en `log/`.
 

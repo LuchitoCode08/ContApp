@@ -54,14 +54,27 @@ def main() -> int:
             for f in sorted(pyodc_files)[:5]:
                 print(f"  - {f}")
             return 0
-        else:
-            print()
-            print("[ERROR] pyodc is NOT in ZIP")
-            print()
-            print("Buscando alternativas... findlibs?")
-            findlibs = [f for f in all_files if "findlibs" in f.lower()]
-            print(f"findlibs files: {len(findlibs)}")
-            return 1
+
+        # pyodc puede ser un paquete puro que PyInstaller empaqueta dentro
+        # del archivo PYZ/EXE en lugar de como archivos sueltos. Verificamos
+        # el Analysis-00.toc del build para confirmar que fue incluido.
+        analysis_toc = Path("build") / "ContApp" / "Analysis-00.toc"
+        if analysis_toc.exists():
+            contenido = analysis_toc.read_text(encoding="utf-8", errors="ignore")
+            if "pyodc" in contenido.lower():
+                print()
+                print("[OK] pyodc IS bundled (confirmado via Analysis-00.toc)")
+                print(f"     No aparece como archivo suelto en el ZIP, pero PyInstaller")
+                print(f"     lo incluyo en el bundle empaquetado.")
+                return 0
+
+        print()
+        print("[ERROR] pyodc is NOT in ZIP")
+        print()
+        print("Buscando alternativas... findlibs?")
+        findlibs = [f for f in all_files if "findlibs" in f.lower()]
+        print(f"findlibs files: {len(findlibs)}")
+        return 1
 
 
 if __name__ == "__main__":

@@ -156,16 +156,17 @@ end;
 // preprocesadas como {#MyAppName} en strings literales. El
 // preprocesador de Inno las expande, pero el parser de Pascal no
 // sabe manejar el resultado y tira "Type mismatch".
-// Solucion: leer el setting de [Setup] en runtime con SetupSetting(),
-// que retorna el valor YA expandido. El segundo argumento es el
-// valor por defecto ('' si no existe).
+// Solucion: leer la constante {MyAppName} en runtime con ExpandConstant().
+// No usamos {#MyAppName} directamente en el string porque el preprocesador
+// lo expandiria en tiempo de compilacion y el parser de Pascal puede
+// confundirse. ExpandConstant evalua la constante en runtime.
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   AppName: String;
 begin
-  if CurStep = ssInstall and IsUpgrade() then
+  if (CurStep = ssInstall) and IsUpgrade() then
   begin
-    AppName := SetupSetting('AppName', '');
+    AppName := ExpandConstant('{MyAppName}');
     MsgBox(
       'Se detectó una instalación previa de ' + AppName + '.' + #13#10 +
       'Sus datos (preferencias y JSONs editables) se conservarán.',
