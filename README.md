@@ -178,15 +178,15 @@ El proyecto se empaqueta con **PyInstaller** (modo `--onedir`) y se distribuye c
 ### Pipeline
 
 ```
-tag v1.0.1
+tag v1.0.3
     │
     ▼
 GitHub Actions (.github/workflows/release.yml)
     │
     ├─ PyInstaller  ──►  dist/ContApp/      (bundle con .exe + DLLs + jsons/)
     │
-    └─ Inno Setup   ──►  dist/ContApp_Setup-1.0.1.exe  (instalador)
-                       └►  dist/ContApp-1.0.1-portable.zip  (alternativa)
+    └─ Inno Setup   ──►  dist/ContApp_Setup-1.0.3.exe  (instalador)
+                       └►  dist/ContApp-1.0.3-portable.zip  (alternativa)
     │
     ▼
 GitHub Release con los 2 assets
@@ -210,13 +210,13 @@ Resultado: `dist/ContApp_Setup-1.0.0.exe` (instalador para distribuir).
 
 **4) Build completo con un solo script:**
 ```powershell
-.\scripts\build\build_release.ps1 -Version 1.0.1
+.\scripts\build\build_release.ps1 -Version 1.0.3
 ```
 Ejecuta tests, PyInstaller, ZIP portable y el instalador. Requiere Inno Setup instalado; si no, usar `-SkipInstaller`.
 
 **5) Distribuir:**
-- **Instalador** (recomendado): `dist/ContApp_Setup-1.0.1.exe` — crea acceso directo en Menú Inicio, registra desinstalador.
-- **Portable**: `dist/ContApp-1.0.1-portable.zip` — descomprimir y ejecutar `ContApp.exe`.
+- **Instalador** (recomendado): `dist/ContApp_Setup-1.0.3.exe` — crea acceso directo en Menú Inicio, registra desinstalador.
+- **Portable**: `dist/ContApp-1.0.3-portable.zip` — descomprimir y ejecutar `ContApp.exe`.
 
 ### Release automático
 

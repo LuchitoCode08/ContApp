@@ -12,7 +12,7 @@
 2. **Interfaz Fierro** — depura un Excel de Fierro siguiendo el instructivo KM5 y agrega las hojas `Diario 2026 - Copia` y `Comprobante`.
 3. **Interfaz Zeus** — depura un Excel de Zeus con la hoja `Exportar`. **Actualmente en desarrollo** (`EN_DESARROLLO = True`) y bloqueado en la UI.
 
-La app está pensada para dos usuarios de la oficina de contabilidad, cada uno con sus propios archivos y reglas JSON. La versión actual del repositorio es **1.0.1** (única fuente de verdad: `app/version.py`).
+La app está pensada para dos usuarios de la oficina de contabilidad, cada uno con sus propios archivos y reglas JSON. La versión actual del repositorio es **1.0.3** (única fuente de verdad: `app/version.py`).
 
 ---
 
@@ -246,17 +246,17 @@ Resultado: `dist/ContApp/ContApp.exe` + `dist/ContApp/_internal/`.
 Requiere Inno Setup instalado. Desde el directorio del proyecto:
 
 ```powershell
-iscc /DMyAppVersion=1.0.1 ContApp.iss
+iscc /DMyAppVersion=1.0.3 ContApp.iss
 ```
 
-Resultado: `dist/ContApp_Setup-1.0.1.exe`.
+Resultado: `dist/ContApp_Setup-1.0.3.exe`.
 
 ### Build completo local (bundle + portable + instalador)
 
 Hay un script PowerShell que corre todo el pipeline en un solo paso:
 
 ```powershell
-.\scripts\build\build_release.ps1 -Version 1.0.1
+.\scripts\build\build_release.ps1 -Version 1.0.3
 ```
 
 Parámetros útiles:
@@ -265,14 +265,14 @@ Parámetros útiles:
 
 Resultado esperado en `dist/`:
 - `ContApp/ContApp.exe` + `_internal/`
-- `ContApp-1.0.1-portable.zip`
-- `ContApp_Setup-1.0.1.exe`
+- `ContApp-1.0.3-portable.zip`
+- `ContApp_Setup-1.0.3.exe`
 
 ### Release automático
 
 ```powershell
-git tag v1.0.1
-git push origin v1.0.1
+git tag v1.0.3
+git push origin v1.0.3
 ```
 
 El workflow `release.yml` buildea y crea un draft release en GitHub. El tag debe coincidir con `__version__` en `app/version.py`.
@@ -343,14 +343,14 @@ La suite usa **pytest** y está organizada en tests unitarios, de integración y
 ### Pipeline de release (GitHub Actions)
 
 ```
-git tag v1.0.1
+git tag v1.0.3
     │
     ▼
 release.yml
     │
     ├─ PyInstaller  ──► dist/ContApp/
-    ├─ Inno Setup    ──► dist/ContApp_Setup-1.0.1.exe
-    └─ Compress-Archive ──► dist/ContApp-1.0.1-portable.zip
+    ├─ Inno Setup    ──► dist/ContApp_Setup-1.0.3.exe
+    └─ Compress-Archive ──► dist/ContApp-1.0.3-portable.zip
     │
     ▼
 GitHub Release (draft) con ambos assets
