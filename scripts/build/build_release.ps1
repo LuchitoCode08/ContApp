@@ -101,13 +101,18 @@ try {
     # ------------------------------------------------------------------
     if (-not $SkipInstaller) {
         Write-Host "`n[5/5] Build del instalador con Inno Setup..." -ForegroundColor Cyan
-        $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-        if (-not (Test-Path $iscc)) {
-            $iscc = "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
+        $candidatos = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "${env:ProgramFiles}\Inno Setup 6\ISCC.exe",
+            "${env:ProgramFiles(x86)}\Inno Setup 7\ISCC.exe",
+            "${env:ProgramFiles}\Inno Setup 7\ISCC.exe",
+            "${env:LOCALAPPDATA}\Programs\Inno Setup 7\ISCC.exe"
+        )
+        $iscc = $candidatos | Where-Object { Test-Path $_ } | Select-Object -First 1
+        if (-not $iscc) {
+            throw "No se encontro ISCC.exe. Instala Inno Setup 6/7 o usa -SkipInstaller."
         }
-        if (-not (Test-Path $iscc)) {
-            throw "No se encontro ISCC.exe. Instala Inno Setup 6 o usa -SkipInstaller."
-        }
+        Write-Host "Usando ISCC: $iscc" -ForegroundColor DarkGray
         & $iscc /DMyAppVersion=$Version ContApp.iss
         if ($LASTEXITCODE -ne 0) {
             throw "Inno Setup fallo con codigo $LASTEXITCODE"

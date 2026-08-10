@@ -12,7 +12,7 @@ from __future__ import annotations
 #   - bug fix        -> MAJOR.MINOR.PATCH+1
 #   - feature nueva  -> MAJOR.MINOR+1.0
 #   - breaking       -> MAJOR+1.0.0
-__version__: str = "1.0.1"
+__version__: str = "1.0.3"
 
 # Nombre publico de la app.
 APP_NAME: str = "ContApp"
