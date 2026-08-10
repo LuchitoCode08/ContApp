@@ -40,7 +40,6 @@ Demo/
 ├── requirements.txt            # Dependencias
 ├── ContApp.spec                # Spec de PyInstaller (--onedir, console=False)
 ├── ContApp.iss                 # Script de Inno Setup para el instalador .exe
-├── context.md                  # Documento de contexto del proyecto (humano)
 ├── README.md                   # Documentación pública
 │
 ├── app/                        # Configuración, arranque y versionado
@@ -101,9 +100,14 @@ Demo/
 │   ├── tests.yml               # Tests en cada push/PR a main
 │   └── release.yml             # Build + release al pushear tag v*.*.*
 │
-├── build_portable_zip.py       # Script auxiliar para crear zip portable
-├── check_zip.py                # Verifica que el zip portable tenga ContApp.exe
-└── verify_zip_final.py         # Verifica que pyodc esté en el zip portable
+├── scripts/                    # Scripts auxiliares de build y verificación
+│   └── build/                  # Scripts del bundle PyInstaller
+│       ├── build_portable_zip.py
+│       ├── check_zip.py
+│       └── verify_zip_final.py
+│
+└── docs/                        # Documentación del proyecto
+    └── context.md               # Documento de contexto del proyecto (humano)
 ```
 
 ### Ubicaciones importantes fuera del repositorio
@@ -180,6 +184,8 @@ La cancelación cooperativa usa el callback `cancelado` y la excepción `Proceso
 - `ContApp.iss` — script de Inno Setup: instala en `%LOCALAPPDATA%\ContApp`, no pide UAC, crea acceso directo en Menú Inicio, preserva `data/` y `jsons/` en upgrades.
 - `.github/workflows/tests.yml` — corre pytest en Windows con Python 3.14 en cada push/PR a `main`.
 - `.github/workflows/release.yml` — build + release al pushear tag `v*.*.*`. Verifica que el tag coincida con `app/version.py`, corre tests, buildea con PyInstaller, crea instalador con Inno Setup, comprime zip portable y genera un draft release en GitHub.
+- `scripts/build/` — scripts auxiliares locales para crear y revisar el bundle portable (`build_portable_zip.py`, `check_zip.py`, `verify_zip_final.py`). No los usa CI; son de uso manual en desarrollo.
+- `docs/` — documentación humana del proyecto: `context.md`.
 
 ---
 
@@ -244,6 +250,23 @@ iscc /DMyAppVersion=1.0.1 ContApp.iss
 ```
 
 Resultado: `dist/ContApp_Setup-1.0.1.exe`.
+
+### Build completo local (bundle + portable + instalador)
+
+Hay un script PowerShell que corre todo el pipeline en un solo paso:
+
+```powershell
+.\scripts\build\build_release.ps1 -Version 1.0.1
+```
+
+Parámetros útiles:
+- `-SkipTests` — omite `pytest`.
+- `-SkipInstaller` — omite Inno Setup y solo genera el bundle y el ZIP portable.
+
+Resultado esperado en `dist/`:
+- `ContApp/ContApp.exe` + `_internal/`
+- `ContApp-1.0.1-portable.zip`
+- `ContApp_Setup-1.0.1.exe`
 
 ### Release automático
 

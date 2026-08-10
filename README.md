@@ -88,6 +88,15 @@ Demo/
 │   ├── bitacora.py              # Logger a archivo + consola
 │   └── json_manager.py          # CRUD JSON con backup
 │
+├── services/                    # Servicios registrados en el contenedor DI
+│   ├── settings_service.py      # Persistencia de preferencias
+│   ├── backup_service.py        # Política de backups de JSONs
+│   └── reporte_service.py       # Reporte de ejecución
+│
+├── events/                      # Bus de eventos pub/sub thread-safe
+│   ├── bus.py                   # EventBus singleton
+│   └── eventos.py               # Dataclasses de eventos
+│
 ├── jsons/                       # Reglas editables (dentro del programa)
 │   ├── comprobante/             # 4 JSONs (FOAPAL, NIT Bancolombia, códigos)
 │   ├── fierro/                  # 3 JSONs (mapeos auxiliares/descripciones/tarjetas)
@@ -101,27 +110,28 @@ Demo/
 │   ├── bitacora.log             # Log automático (rotación por fecha)
 │   └── BITACORA.md              # Bitácora de la sesión actual
 │
-└── tests/                       # 153 tests (pytest)
-    ├── test_archivos.py
-    ├── test_bitacora.py
-    ├── test_comprobante_e2e.py
-    ├── test_fierro_e2e.py
-    ├── test_zeus_e2e.py         # 4 saltados mientras EN_DESARROLLO=True
-    ├── test_json_manager.py
-    ├── test_config_persistencia.py
-    ├── test_config_paths.py     # sys.frozen, RAIZ, JSONS_DIR
-    ├── test_version_utils.py    # semver, comparacion, parsear_release
-    ├── test_updater_checker.py  # UpdaterChecker + URL mockeada
-    ├── test_updater_downloader.py  # UpdaterDownloader + chunks
-    └── test_smoke.py
-    ├── test_smoke.py
-    ├── test_archivos.py
-    ├── test_bitacora.py
-    ├── test_json_manager.py
-    ├── test_config_persistencia.py
-    ├── test_comprobante_e2e.py
-    ├── test_fierro_e2e.py
-    └── test_zeus_e2e.py         # 4 saltados mientras EN_DESARROLLO=True
+├── tests/                       # Suite de pytest
+│   ├── test_smoke.py
+│   ├── test_archivos.py
+│   ├── test_bitacora.py
+│   ├── test_json_manager.py
+│   ├── test_config_persistencia.py
+│   ├── test_config_paths.py     # sys.frozen, RAIZ, JSONS_DIR
+│   ├── test_comprobante_e2e.py
+│   ├── test_fierro_e2e.py
+│   ├── test_zeus_e2e.py         # 4 saltados mientras EN_DESARROLLO=True
+│   ├── test_version_utils.py    # semver, comparacion, parsear_release
+│   ├── test_updater_checker.py  # UpdaterChecker + URL mockeada
+│   └── test_updater_downloader.py  # UpdaterDownloader + chunks
+│
+├── scripts/                     # Scripts auxiliares de build y verificación
+│   └── build/                   # Scripts del bundle portable
+│       ├── build_portable_zip.py
+│       ├── check_zip.py
+│       └── verify_zip_final.py
+│
+└── docs/                        # Documentación del proyecto
+    └── context.md               # Documento de contexto del proyecto
 ```
 
 > **Nota:** los resultados NO viven en el repo. Ver tabla "Ubicaciones importantes" abajo.
@@ -198,9 +208,15 @@ iscc /DMyAppVersion=1.0.0 ContApp.iss
 ```
 Resultado: `dist/ContApp_Setup-1.0.0.exe` (instalador para distribuir).
 
-**4) Distribuir:**
-- **Instalador** (recomendado): `dist/ContApp_Setup-1.0.0.exe` — crea acceso directo en Menú Inicio, registra desinstalador.
-- **Portable**: comprimir `dist/ContApp/` en un .zip — útil para usuarios avanzados o pruebas.
+**4) Build completo con un solo script:**
+```powershell
+.\scripts\build\build_release.ps1 -Version 1.0.1
+```
+Ejecuta tests, PyInstaller, ZIP portable y el instalador. Requiere Inno Setup instalado; si no, usar `-SkipInstaller`.
+
+**5) Distribuir:**
+- **Instalador** (recomendado): `dist/ContApp_Setup-1.0.1.exe` — crea acceso directo en Menú Inicio, registra desinstalador.
+- **Portable**: `dist/ContApp-1.0.1-portable.zip` — descomprimir y ejecutar `ContApp.exe`.
 
 ### Release automático
 

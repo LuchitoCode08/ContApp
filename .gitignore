@@ -6,7 +6,7 @@ __pycache__/
 *.so
 
 # PyInstaller
-build/
+/build/
 dist/
 # ContApp.spec SE VERSIONA: define como se compila la app y lo usa el workflow.
 # Otros .spec que generes localmente para probar (ej: Test.spec) si quedan ignorados
