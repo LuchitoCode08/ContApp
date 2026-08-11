@@ -45,7 +45,7 @@ def _setup_comprobante(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Configura tmp_path con JSONs + patches para ProcesoComprobante."""
     _copiar_jsons(tmp_path, "comprobante", (
         "codigos_conceptos.json", "codigos_contables.json",
-        "foapal.json", "nit_bancolombia.json",
+        "foapal.json", "nit_bancolombia.json", "codigos_ignorados.json",
     ))
     monkeypatch.setattr("procesos.comprobante.RAIZ", tmp_path)
     monkeypatch.setattr("procesos.comprobante.RESULTADOS_DIR", tmp_path)

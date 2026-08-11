@@ -119,12 +119,13 @@ class ProcesoComprobante(ProcesoBase):
 
     def __init__(self) -> None:
         super().__init__()
-        # Carga de los 4 JSONs del proceso.
+        # Carga de los 5 JSONs del proceso.
         json_dir = RAIZ / "jsons" / "comprobante"
         self.clasificador_conceptos: dict = leer_json(json_dir / "codigos_conceptos.json")
         self.codigos_contables: dict[str, str] = leer_json(json_dir / "codigos_contables.json")
         self.nit_bancolombia: dict[str, str] = leer_json(json_dir / "nit_bancolombia.json")
         self.foapal_config: dict = leer_json(json_dir / "foapal.json")
+        self.codigos_ignorados: dict = leer_json(json_dir / "codigos_ignorados.json")
 
         # Constantes derivadas.
         self.cuenta_bancolombia: str = next(
@@ -192,6 +193,66 @@ class ProcesoComprobante(ProcesoBase):
         if not datos:
             return pd.DataFrame()
         return pd.concat(datos, ignore_index=True)
+    
+    # Verificar códigos conceptos no encontrados en el CSV y no mapeados.
+    def verificar_codigos_conceptos(self, df: pd.DataFrame) -> list[str]:
+        """Devuelve códigos de concepto del CSV que no estén mapeados.
+
+        Un código se considera mapeado si aparece en:
+        - ``codigos_conceptos.json`` (Intereses o Gastos bancarios)
+        - ``foapal.json`` (créditos o débitos)
+        - ``codigos_ignorados.json`` (códigos que el usuario descartó)
+        """
+        if df.empty or COL_CODIGO_CONCEPTO not in df.columns:
+            return []
+
+        codigos_csv = set(df[COL_CODIGO_CONCEPTO].astype(str).str.strip())
+        codigos_csv.discard("")
+        codigos_mapeados = set()
+        codigos_mapeados.update(self.clasificador_conceptos.get("Intereses", {}).keys())
+        codigos_mapeados.update(self.clasificador_conceptos.get("Gastos bancarios", {}).keys())
+        codigos_mapeados.update(self.foapal_config.get("creditos", {}).keys())
+        codigos_mapeados.update(self.foapal_config.get("debitos", {}).keys())
+        codigos_mapeados.update(self.codigos_ignorados.get("codigos", []))
+
+        codigos_no_encontrados = codigos_csv - codigos_mapeados
+        return sorted(codigos_no_encontrados, key=lambda c: (len(c), c))
+
+    def _split_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Convierte el DataFrame crudo (una sola columna) en columnas separadas.
+
+        El CSV de Bancolombia se lee con ``sep="|"`` para evitar problemas
+        con comas en la descripción; aquí hacemos el split real por coma.
+        """
+        if df.empty or 0 not in df.columns:
+            return pd.DataFrame()
+        splitted = df[0].str.split(pat=",", expand=True)
+        splitted = splitted.apply(lambda c: c.astype(str).str.strip())
+        return splitted
+
+    def obtener_codigos_desconocidos(
+        self, archivos: list[Path],
+    ) -> tuple[list[str], dict[str, str]]:
+        """Lee todos los ZIPs y devuelve los códigos desconocidos + descripciones.
+
+        Returns:
+            (codigos, descripciones) donde ``descripciones`` mapea cada código
+            a la primera descripción encontrada en los CSVs.
+        """
+        copias: list[pd.DataFrame] = []
+        for zip_path in archivos:
+            copias.append(self._leer_csvs_de_zip(zip_path))
+        crudo = pd.concat(copias, ignore_index=True) if copias else pd.DataFrame()
+        df = self._split_dataframe(crudo)
+
+        codigos = self.verificar_codigos_conceptos(df)
+        descripciones: dict[str, str] = {}
+        if codigos and COL_CONCEPTO in df.columns:
+            for codigo in codigos:
+                filas = df[df[COL_CODIGO_CONCEPTO].astype(str).str.strip() == codigo]
+                if not filas.empty:
+                    descripciones[codigo] = str(filas.iloc[0][COL_CONCEPTO]).strip()
+        return codigos, descripciones
 
     @staticmethod
     def _read_csv_bytes(raw: bytes) -> pd.DataFrame:

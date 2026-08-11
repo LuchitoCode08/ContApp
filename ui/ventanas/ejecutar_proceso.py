@@ -1,4 +1,4 @@
-﻿"""Pantalla Procesos: ejecutar cualquiera de los 3 procesos desde la UI.
+"""Pantalla Procesos: ejecutar cualquiera de los 3 procesos desde la UI.
 
 Flujo:
     1. Vista GRID: muestra tarjetas con los procesos disponibles.
@@ -29,12 +29,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.config import get_config
+from app.config import JSONS_DIR, get_config
 from procesos.base import ProcesoBase, ProcesoCancelado, ResultadoProceso
+from procesos.comprobante import ProcesoComprobante
+from ui.ventanas.dialogo_codigos_nuevos import DecisionCodigos, DialogoCodigosNuevos
 from ui.widgets.drop_zone import DropZone
 from ui.widgets.tabla_resultados import TablaResultados
 from ui.widgets.tarjeta_proceso import TarjetaProceso
 from utils.bitacora import log
+from utils.json_manager import escribir_json, leer_json
 
 
 # Iconos por proceso (emojis simples).
@@ -385,6 +388,49 @@ class VistaEjecucion(QWidget):
             if n else "Arrastra archivos para empezar."
         )
 
+    def _aplicar_decision_codigos(self, decision: DecisionCodigos) -> None:
+        """Persiste en los JSONs la decisión del usuario sobre códigos nuevos."""
+        if not decision.agregar and not decision.ignorar:
+            return
+
+        json_dir = JSONS_DIR / "comprobante"
+        foapal_path = json_dir / "foapal.json"
+        ignorados_path = json_dir / "codigos_ignorados.json"
+
+        foapal = leer_json(foapal_path)
+        ignorados = leer_json(ignorados_path)
+
+        for codigo, campos in decision.agregar.items():
+            dc = campos.get("D/C", "D")
+            seccion = "creditos" if dc == "C" else "debitos"
+            foapal.setdefault(seccion, {})[codigo] = {
+                "Fondo": campos["Fondo"],
+                "Organizacion": campos["Organizacion"],
+                "Cuenta": campos["Cuenta"],
+                "Programa": campos["Programa"],
+                "D/C": dc,
+            }
+
+        codigos_ignorados_actuales = set(ignorados.get("codigos", []))
+        codigos_ignorados_actuales.update(decision.ignorar)
+        ignorados["codigos"] = sorted(
+            codigos_ignorados_actuales,
+            key=lambda c: (len(c), c),
+        )
+
+        if decision.agregar:
+            escribir_json(foapal_path, foapal)
+            log().info(
+                "[Comprobante] Agregados %d códigos nuevos a foapal.json",
+                len(decision.agregar),
+            )
+        if decision.ignorar:
+            escribir_json(ignorados_path, ignorados)
+            log().info(
+                "[Comprobante] Ignorados %d códigos nuevos en codigos_ignorados.json",
+                len(decision.ignorar),
+            )
+
     # -- Ejecucion ---------------------------------------------------
 
     def _ejecutar(self) -> None:
@@ -403,6 +449,36 @@ class VistaEjecucion(QWidget):
         if error:
             QMessageBox.warning(self, "Archivos invalidos", error)
             return
+
+        # Escaneo de códigos de concepto nuevos solo para Comprobante.
+        # Se hace en el hilo principal para poder mostrar un diálogo modal
+        # sin sincronización compleja con el worker.
+        if self._nombre_proceso == "comprobante" and isinstance(proceso, ProcesoComprobante):
+            try:
+                codigos, descripciones = proceso.obtener_codigos_desconocidos(
+                    list(self._archivos)
+                )
+            except Exception as e:  # noqa: BLE001
+                log().exception("[Comprobante] Error escaneando códigos nuevos: %s", e)
+                QMessageBox.critical(
+                    self,
+                    "Error al escanear códigos",
+                    f"No se pudieron revisar los códigos de concepto:\n{e}",
+                )
+                return
+
+            if codigos:
+                self.estado.setText("Revisando códigos de concepto nuevos...")
+                decision = DialogoCodigosNuevos.solicitar_decision(
+                    self, codigos, descripciones
+                )
+                if decision is None:
+                    self.estado.setText("Ejecución cancelada por el usuario.")
+                    return
+                self._aplicar_decision_codigos(decision)
+                # Recrear la instancia del proceso para que cargue los JSONs
+                # actualizados (foapal.json / codigos_ignorados.json).
+                proceso = cls()
 
         self.btn_ejecutar.setEnabled(False)
         self.btn_cancelar.show()

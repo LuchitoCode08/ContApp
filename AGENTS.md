@@ -162,9 +162,11 @@ La cancelación cooperativa usa el callback `cancelado` y la excepción `Proceso
 
 | Proceso | Entrada | Salida | Reglas JSON | Estado |
 |---------|---------|--------|-------------|--------|
-| `comprobante` | 1+ archivos `.zip` con CSVs | `YYYY-MM NombreMes Bancolombia.xlsx` + `fzrcoco.xlsx` | 4 JSONs en `jsons/comprobante/` | Activo |
+| `comprobante` | 1+ archivos `.zip` con CSVs | `YYYY-MM NombreMes Bancolombia.xlsx` + `fzrcoco.xlsx` | 5 JSONs en `jsons/comprobante/` | Activo |
 | `fierro` | 1 Excel `.xlsx`/`.xls` con hoja `Diario 2026` | El mismo Excel + hojas `Diario 2026 - Copia` y `Comprobante` | 3 JSONs en `jsons/fierro/` | Activo |
 | `zeus` | 1 Excel `.xlsx`/`.xls` con hoja `Exportar` | El mismo Excel + hojas `Exportar - Copia` y `Depurado` | 1 JSON en `jsons/zeus/` | **En desarrollo (bloqueado)** |
+
+Los 5 JSONs de `comprobante` son: `codigos_conceptos.json`, `codigos_contables.json`, `foapal.json`, `nit_bancolombia.json` y `codigos_ignorados.json`. El último guarda los códigos que el usuario decide no agregar a FOAPAL, para no volver a alertar en siguientes ejecuciones.
 
 ### Tipos de estructura de los JSONs (usadas por el editor)
 
