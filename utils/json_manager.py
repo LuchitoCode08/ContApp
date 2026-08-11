@@ -2,7 +2,8 @@
 
 Responsabilidades:
 - Leer y escribir JSONs.
-- Hacer backup automatico antes de cada escritura (con timestamp).
+- Hacer backup automatico antes de cada escritura (un solo backup
+  por archivo, sobrescrito en cada edicion).
 - Detectar la estructura (Tipo A/B/C/D) para que el editor muestre la vista adecuada.
 - Locks por archivo para evitar race conditions entre el editor y los
   procesos en runtime.
@@ -12,8 +13,6 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
-
-from utils.archivos import timestamp_unico
 
 
 # Tipos de estructura detectados
@@ -39,11 +38,16 @@ def escribir_json(
 ) -> Path | None:
     """Escribe un JSON creando backup automatico previo.
 
+    El backup se guarda como un solo archivo con el mismo nombre del JSON
+    original en la carpeta de backups, sobrescribiendo cualquier backup
+    anterior. Asi se mantiene exactamente una copia de seguridad por
+    archivo (la ultima version anterior).
+
     Args:
         ruta: ruta del JSON destino.
         datos: diccionario a serializar.
         hacer_backup: si True (default), copia el archivo actual a
-            <carpeta_backups>/<nombre>_<timestamp>.json antes de escribir.
+            <carpeta_backups>/<nombre_del_json> antes de escribir.
         carpeta_backups: donde guardar el backup. Si es None y hacer_backup=True,
             se usa <directorio_del_json>/.backups/.
 
@@ -59,7 +63,7 @@ def escribir_json(
             carpeta_backups = ruta.parent / ".backups"
         carpeta_backups = Path(carpeta_backups)
         carpeta_backups.mkdir(parents=True, exist_ok=True)
-        backup_path = carpeta_backups / f"{ruta.stem}_{timestamp_unico()}.json"
+        backup_path = carpeta_backups / f"{ruta.name}"
         shutil.copy2(ruta, backup_path)
 
     with ruta.open("w", encoding="utf-8") as f:

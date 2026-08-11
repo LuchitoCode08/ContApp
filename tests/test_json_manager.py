@@ -150,10 +150,35 @@ def test_escribir_json_crea_backup(tmp_path: Path) -> None:
     assert backup is not None
     assert backup.exists()
     assert backup.parent == tmp_path / ".backups"
+    # El backup usa el mismo nombre del archivo original (sin timestamp).
+    assert backup.name == "datos.json"
+    # No debe haber backups con timestamp adicionales.
+    assert list((tmp_path / ".backups").glob("*.json")) == [backup]
     # El backup tiene el contenido viejo.
     assert json.loads(backup.read_text(encoding="utf-8")) == {"original": True}
     # El archivo actual tiene el contenido nuevo.
     assert json.loads(ruta.read_text(encoding="utf-8")) == {"nuevo": True}
+
+
+def test_escribir_json_sobrescribe_backup_unico(tmp_path: Path) -> None:
+    """Solo debe existir un backup por archivo, con la ultima version anterior."""
+    ruta = tmp_path / "datos.json"
+    ruta.write_text(json.dumps({"v1": True}), encoding="utf-8")
+
+    backup1 = escribir_json(ruta, {"v2": True})
+    assert backup1 is not None
+    assert json.loads(backup1.read_text(encoding="utf-8")) == {"v1": True}
+
+    # Editar de nuevo: el backup debe sobrescribirse con la v2.
+    backup2 = escribir_json(ruta, {"v3": True})
+    assert backup2 == backup1
+    assert backup2.exists()
+    # Solo hay un archivo de backup en la carpeta.
+    assert list((tmp_path / ".backups").glob("*.json")) == [backup2]
+    # El backup ahora guarda la v2 (la ultima version anterior).
+    assert json.loads(backup2.read_text(encoding="utf-8")) == {"v2": True}
+    # El archivo actual tiene la v3.
+    assert json.loads(ruta.read_text(encoding="utf-8")) == {"v3": True}
 
 
 def test_escribir_json_sin_backup(tmp_path: Path) -> None:
@@ -177,6 +202,7 @@ def test_escribir_json_carpeta_backups_personalizada(tmp_path: Path) -> None:
 
     assert backup is not None
     assert backup.parent == carpeta_custom
+    assert backup.name == "datos.json"
 
 
 def test_escribir_json_sin_archivo_previo_no_hace_backup(tmp_path: Path) -> None:

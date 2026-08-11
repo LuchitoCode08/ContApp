@@ -140,7 +140,7 @@ class PanelUltimoEjecutado(QFrame):
         self._btn_refrescar.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn_refrescar.clicked.connect(self.refrescar)
         btn_row.addWidget(self._btn_refrescar)
-        self._btn_ver = QPushButton("Ver reporte →")
+        self._btn_ver = QPushButton("Abrir carpeta →")
         self._btn_ver.setObjectName("primary")
         self._btn_ver.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn_ver.clicked.connect(self._abrir_reporte)
@@ -237,7 +237,7 @@ class PanelUltimoEjecutado(QFrame):
             self._btn_ver.setEnabled(False)
 
     def _abrir_reporte(self) -> None:
-        """Abre la carpeta del archivo mas reciente en el explorador."""
+        """Abre la carpeta del primer archivo generado en el explorador."""
         archivos = self._ultimo.get("archivos", []) if self._ultimo else []
         if not archivos:
             return

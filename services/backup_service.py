@@ -2,12 +2,13 @@
 
 Encapsula la politica de backups: cuando hacer uno, donde guardar,
 cuantos retener. Hoy delega en ``utils/json_manager.escribir_json``
-(misma logica que ya esta probada por 232 tests). En el futuro este
-servicio podra cambiar la politica sin tocar los procesos.
+(misma logica que ya esta probada). La politica actual mantiene
+**un solo backup por archivo JSON**: cada edicion sobrescribe la
+version anterior guardada en ``data/backups/``.
 
 API:
     svc = BackupService(carpeta_backups=Path("data/backups"))
-    backup_path = svc.backup_antes_de_escribir(Path("jsons/foo.json"))
+    backup_path = svc.backup_antes_de_escribir(Path("jsons/foo.json"), datos)
 
 Anadido en el refactor v2 (Fase 1: infraestructura).
 """
@@ -15,7 +16,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from utils.archivos import timestamp_unico
 from utils.json_manager import escribir_json
 
 
@@ -26,14 +26,14 @@ class BackupService:
         self,
         carpeta_backups: Path | str,
         *,
-        politica: str = "uno_por_edicion",
+        politica: str = "uno_por_archivo",
     ) -> None:
         """
         Args:
             carpeta_backups: raiz donde se guardan los backups.
-            politica: ``"uno_por_edicion"`` (default) crea un backup
-                nuevo en cada escritura. Futuras politicas podrian ser
-                ``"uno_por_dia"`` o ``"n_ultimos"``.
+            politica: ``"uno_por_archivo"`` (default) mantiene un solo
+                backup por JSON, sobrescrito en cada escritura. Es decir,
+                siempre se conserva la ultima version anterior del archivo.
         """
         self._raiz = Path(carpeta_backups)
         self._politica = politica
@@ -84,19 +84,14 @@ class BackupService:
         )
 
     def limpiar_antiguos(self, mantener: int = 20) -> int:
-        """Borra backups viejos dejando solo los ``mantener`` mas recientes.
+        """Con la politica actual no aplica: solo hay un backup por archivo.
+
+        Se conserva el metodo por compatibilidad, pero no borra nada.
+
+        Args:
+            mantener: ignorado en la politica ``uno_por_archivo``.
 
         Returns:
-            Cantidad de backups borrados.
+            Siempre 0.
         """
-        if not self._raiz.exists():
-            return 0
-        backups = self.listar_backups()
-        borrados = 0
-        for viejo in backups[mantener:]:
-            try:
-                viejo.unlink()
-                borrados += 1
-            except OSError:
-                pass
-        return borrados
+        return 0
