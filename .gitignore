@@ -38,3 +38,6 @@ desktop.ini
 *.tmp
 *.bak
 *.log
+
+# Contexto de tareas de agentes
+ContApp_Contexto_Tarea.md
