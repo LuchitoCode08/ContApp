@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.config import JSONS_DIR, get_config
+from app.config import DATA_DIR, JSONS_DIR, get_config
 from procesos.base import ProcesoBase, ProcesoCancelado, ResultadoProceso
 from procesos.comprobante import ProcesoComprobante
 from ui.ventanas.dialogo_codigos_nuevos import DecisionCodigos, DialogoCodigosNuevos
@@ -37,7 +37,8 @@ from ui.widgets.drop_zone import DropZone
 from ui.widgets.tabla_resultados import TablaResultados
 from ui.widgets.tarjeta_proceso import TarjetaProceso
 from utils.bitacora import log
-from utils.json_manager import escribir_json, leer_json
+from services.backup_service import BackupService
+from utils.json_manager import leer_json
 
 
 # Iconos por proceso (emojis simples).
@@ -418,14 +419,19 @@ class VistaEjecucion(QWidget):
             key=lambda c: (len(c), c),
         )
 
+        svc = BackupService(carpeta_backups=DATA_DIR / "backups")
         if decision.agregar:
-            escribir_json(foapal_path, foapal)
+            svc.backup_antes_de_escribir(
+                foapal_path, foapal, proceso="comprobante"
+            )
             log().info(
                 "[Comprobante] Agregados %d códigos nuevos a foapal.json",
                 len(decision.agregar),
             )
         if decision.ignorar:
-            escribir_json(ignorados_path, ignorados)
+            svc.backup_antes_de_escribir(
+                ignorados_path, ignorados, proceso="comprobante"
+            )
             log().info(
                 "[Comprobante] Ignorados %d códigos nuevos en codigos_ignorados.json",
                 len(decision.ignorar),

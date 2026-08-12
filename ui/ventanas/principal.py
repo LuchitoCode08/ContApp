@@ -72,6 +72,7 @@ ICONOS_SECCION: dict[str, str] = {
     "Inicio": "🏠",
     "Procesos": "▶",
     "Diccionarios": "📚",
+    "Backups": "🛡",
     "Configuracion": "⚙",
 }
 
@@ -342,7 +343,7 @@ class PantallaInicio(QWidget):
 class VentanaPrincipal(QMainWindow):
     """Ventana principal con sidebar y 4 pantallas."""
 
-    SECCIONES = ["Inicio", "Procesos", "Diccionarios", "Configuracion"]
+    SECCIONES = ["Inicio", "Procesos", "Diccionarios", "Backups", "Configuracion"]
 
     def __init__(self) -> None:
         super().__init__()
@@ -401,6 +402,7 @@ class VentanaPrincipal(QMainWindow):
         self.pantalla_inicio = PantallaInicio()
         self.pantalla_procesos = self._crear_pantalla_procesos()
         self.pantalla_diccionarios = self._crear_pantalla_diccionarios()
+        self.pantalla_backups = self._crear_pantalla_backups()
         self.pantalla_configuracion = self._crear_pantalla_configuracion()
 
         self.stack = QStackedWidget()
@@ -408,6 +410,7 @@ class VentanaPrincipal(QMainWindow):
             self.pantalla_inicio,
             self.pantalla_procesos,
             self.pantalla_diccionarios,
+            self.pantalla_backups,
             self.pantalla_configuracion,
         ):
             self.stack.addWidget(p)
@@ -687,6 +690,10 @@ class VentanaPrincipal(QMainWindow):
     def _crear_pantalla_diccionarios(self) -> QWidget:
         from ui.ventanas.editor_json import PantallaDiccionarios
         return PantallaDiccionarios()
+
+    def _crear_pantalla_backups(self) -> QWidget:
+        from ui.ventanas.backups import PantallaBackups
+        return PantallaBackups()
 
     def _crear_pantalla_configuracion(self) -> QWidget:
         from ui.ventanas.configuracion import PantallaConfiguracion

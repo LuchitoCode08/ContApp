@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from app.config import DATA_DIR, LOG_DIR
+from app.config import DATA_DIR, JSONS_DIR, LOG_DIR
 from app.container import Container
 from services.backup_service import BackupService
 from services.reporte_service import ReporteService
@@ -55,3 +55,15 @@ def bootstrap(c: Container) -> None:
     c.register("bitacora", _bitacora_factory)
     c.register("backup_service", _backup_factory)
     c.register("reporte_service", _reporte_factory)
+
+    # Migrar backups huérfanos generados por versiones anteriores del
+    # editor (que guardaban en jsons/<proceso>/.backups/) hacia la
+    # carpeta central data/backups/ donde los lista la UI.
+    try:
+        svc = c.get_singleton("backup_service")
+        svc.migrar_backups_huerfanos(JSONS_DIR)
+    except Exception:
+        # Nunca debe impedir el arranque de la app.
+        logging.getLogger(__name__).exception(
+            "Fallo la migracion de backups huérfanos"
+        )

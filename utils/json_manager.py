@@ -72,6 +72,41 @@ def escribir_json(
     return backup_path
 
 
+def restaurar_json(
+    ruta_destino: Path | str,
+    ruta_backup: Path | str,
+) -> Path:
+    """Restaura un JSON desde su backup.
+
+    Sobrescribe el archivo destino con el contenido del backup **sin**
+    generar un nuevo backup. Esto evita perder la copia de seguridad que
+    se esta restaurando.
+
+    Args:
+        ruta_destino: ruta del JSON a restaurar.
+        ruta_backup: ruta del archivo backup.
+
+    Returns:
+        Ruta del archivo destino restaurado.
+
+    Raises:
+        FileNotFoundError: si el backup no existe.
+        ValueError: si el backup no es un JSON valido.
+    """
+    ruta_destino = Path(ruta_destino)
+    ruta_backup = Path(ruta_backup)
+
+    if not ruta_backup.exists():
+        raise FileNotFoundError(f"Backup no encontrado: {ruta_backup}")
+
+    datos = leer_json(ruta_backup)
+    ruta_destino.parent.mkdir(parents=True, exist_ok=True)
+    with ruta_destino.open("w", encoding="utf-8") as f:
+        json.dump(datos, f, ensure_ascii=False, indent=2)
+
+    return ruta_destino
+
+
 def detectar_tipo(datos: dict) -> str:
     """Detecta la estructura de un JSON cargado.
 

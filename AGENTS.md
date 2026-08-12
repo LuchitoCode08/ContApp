@@ -58,9 +58,10 @@ Demo/
 ├── ui/                         # Interfaz gráfica (no sabe de pandas ni openpyxl)
 │   ├── recursos/tema.py        # Paleta + QSS global (claro/oscuro)
 │   ├── ventanas/               # Pantallas principales
-│   │   ├── principal.py        # VentanaPrincipal + sidebar + 4 secciones
+│   │   ├── principal.py        # VentanaPrincipal + sidebar + 5 secciones
 │   │   ├── ejecutar_proceso.py # PantallaProcesos + WorkerEjecucion (QThread)
 │   │   ├── editor_json.py      # Editor de diccionarios/JSONs
+│   │   ├── backups.py          # Gestor de copias de seguridad de JSONs
 │   │   ├── configuracion.py    # Bitácora y preferencias
 │   │   └── dialogo_actualizacion.py
 │   └── widgets/                # Componentes reutilizables (DropZone, tarjetas, switches, etc.)
@@ -68,11 +69,11 @@ Demo/
 ├── utils/                      # Herramientas de apoyo (sin dependencia de UI)
 │   ├── archivos.py             # Carpetas mensuales, timestamps, copiar/mover
 │   ├── bitacora.py             # Logger + parseo de registros + último proceso
-│   └── json_manager.py         # CRUD JSON + backup + detección de tipo + locks
+│   └── json_manager.py         # CRUD JSON + backup + restauración + detección de tipo + locks
 │
 ├── services/                   # Servicios registrados en el contenedor DI
 │   ├── settings_service.py     # Persistencia de preferencias (reemplaza usuario.json)
-│   ├── backup_service.py       # Política de backups de JSONs
+│   ├── backup_service.py       # Política de backups de JSONs + restauración
 │   └── reporte_service.py      # Reporte de ejecución (logging + dict)
 │
 ├── events/                     # Bus de eventos pub/sub thread-safe
@@ -320,22 +321,23 @@ La suite usa **pytest** y está organizada en tests unitarios, de integración y
 - `test_smoke.py` — imports básicos y sanidad.
 - `test_archivos.py` — utilidades de manejo de archivos y carpetas mensuales.
 - `test_bitacora.py` — logging, parseo de registros, `obtener_ultimo()`, cache.
-- `test_json_manager.py` — lectura/escritura JSON, detección de tipo, backups, locks.
+- `test_json_manager.py` — lectura/escritura JSON, detección de tipo, backups, restauración, locks.
 - `test_config_paths.py` y `test_config_persistencia.py` — rutas y persistencia de preferencias.
+- `test_backup_service.py` — política de backups y restauración desde el servicio.
 - `test_comprobante_e2e.py`, `test_fierro_e2e.py`, `test_zeus_e2e.py` — ejecución real de los procesos con datos sintéticos.
 - `test_cancelar_proceso.py` — cancelación cooperativa.
 - `test_progreso.py` — emisión de progreso y firma de callbacks.
-- `test_editor_json_lazy.py`, `test_configuracion_ui.py`, `test_debounce_tema.py` — UI con `qtbot`.
+- `test_editor_json_lazy.py`, `test_configuracion_ui.py`, `test_backups_ui.py`, `test_debounce_tema.py` — UI con `qtbot`.
 - `test_version_utils.py`, `test_updater_checker.py`, `test_updater_downloader.py` — updater.
 
 ### Estado actual de los tests (última ejecución verificada)
 
 ```text
-252 passed, 4 skipped, 1 warning in 17.98s
+277 passed, 4 skipped, 2 warnings in 11.61s
 ```
 
 - **4 skipped:** tests de ejecución de Zeus (`test_zeus_e2e.py`) porque `EN_DESARROLLO = True`.
-- **1 warning:** `PytestUnraisableExceptionWarning` al cerrar un `WriteOnlyWorksheet` de openpyxl en `test_fierro_chequea_cancelacion_no_en_cada_fila`; no rompe el test pero indica un resource leak potencial.
+- **2 warnings:** `PytestUnraisableExceptionWarning` al cerrar hojas de openpyxl (`WriteOnlyWorksheet` y `WorksheetWriter`) en `test_fierro_chequea_cancelacion_no_en_cada_fila`; no rompen los tests pero indican un resource leak potencial.
 - La inconsistencia del callback `progreso` ya fue resuelta; `tests/test_progreso.py` pasa completamente.
 
 ---

@@ -26,6 +26,7 @@ from utils.json_manager import (
     detectar_tipo,
     escribir_json,
     leer_json,
+    restaurar_json,
 )
 
 
@@ -235,3 +236,54 @@ def test_escribir_json_indent_2(tmp_path: Path) -> None:
     contenido = ruta.read_text(encoding="utf-8")
     # 2 espacios de indentacion.
     assert '  "k"' in contenido
+
+
+# ====================================================================
+# restaurar_json
+# ====================================================================
+
+
+def test_restaurar_json_recupera_contenido_anterior(tmp_path: Path) -> None:
+    """restaurar_json escribe el contenido del backup en el destino."""
+    ruta = tmp_path / "datos.json"
+    backup = tmp_path / ".backups" / "datos.json"
+    ruta.write_text(json.dumps({"version": "actual"}), encoding="utf-8")
+    backup.parent.mkdir(parents=True, exist_ok=True)
+    backup.write_text(json.dumps({"version": "backup"}), encoding="utf-8")
+
+    restaurar_json(ruta, backup)
+
+    assert json.loads(ruta.read_text(encoding="utf-8")) == {"version": "backup"}
+
+
+def test_restaurar_json_no_crea_nuevo_backup(tmp_path: Path) -> None:
+    """Al restaurar no debe generarse un nuevo backup que pise la copia."""
+    ruta = tmp_path / "datos.json"
+    backup = tmp_path / ".backups" / "datos.json"
+    ruta.write_text(json.dumps({"version": "actual"}), encoding="utf-8")
+    backup.parent.mkdir(parents=True, exist_ok=True)
+    backup.write_text(json.dumps({"version": "backup"}), encoding="utf-8")
+
+    restaurar_json(ruta, backup)
+
+    # No debe aparecer ningun backup adicional.
+    assert list((tmp_path / ".backups").glob("*.json")) == [backup]
+
+
+def test_restaurar_json_backup_inexistente_lanza_error(tmp_path: Path) -> None:
+    """Si el backup no existe, lanza FileNotFoundError."""
+    ruta = tmp_path / "datos.json"
+    backup = tmp_path / "no_existe.json"
+
+    with pytest.raises(FileNotFoundError):
+        restaurar_json(ruta, backup)
+
+
+def test_restaurar_json_backup_invalido_lanza_error(tmp_path: Path) -> None:
+    """Si el backup no es JSON valido, lanza ValueError (via json.load)."""
+    ruta = tmp_path / "datos.json"
+    backup = tmp_path / "backup.json"
+    backup.write_text("{ invalido", encoding="utf-8")
+
+    with pytest.raises(ValueError):
+        restaurar_json(ruta, backup)

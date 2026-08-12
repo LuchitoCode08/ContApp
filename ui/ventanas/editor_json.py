@@ -38,7 +38,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.config import JSONS_DIR, get_config
+from app.config import DATA_DIR, JSONS_DIR, get_config
+from services.backup_service import BackupService
 from utils.bitacora import log
 from utils.json_manager import (
     TIPO_A,
@@ -47,7 +48,6 @@ from utils.json_manager import (
     TIPO_D,
     con_lock,
     detectar_tipo,
-    escribir_json,
     leer_json,
 )
 
@@ -113,6 +113,7 @@ class PantallaDiccionarios(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._cfg = get_config()
+        self._svc_backup = BackupService(carpeta_backups=DATA_DIR / "backups")
         self._items: list[tuple[Path, str]] = []  # (ruta, proceso)
         self._ruta_actual: Path | None = None
         self._datos_originales: dict | None = None
@@ -120,6 +121,7 @@ class PantallaDiccionarios(QWidget):
         self._tipo_actual: str = ""
         self._editor_widget: QWidget | None = None
         self._hay_cambios = False
+        self._proceso_actual: str = ""
         self._construir_ui()
         self._cargar_lista_jsons()
 
@@ -188,6 +190,16 @@ class PantallaDiccionarios(QWidget):
         self.btn_agregar.clicked.connect(self._on_agregar)
         self.btn_agregar.setEnabled(False)
         flayout.addWidget(self.btn_agregar)
+
+        self.btn_restaurar = QPushButton("↩  Restaurar backup")
+        self.btn_restaurar.setObjectName("ghost")
+        self.btn_restaurar.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_restaurar.clicked.connect(self._on_restaurar)
+        self.btn_restaurar.setEnabled(False)
+        self.btn_restaurar.setToolTip(
+            "Volver a la copia de seguridad del JSON seleccionado"
+        )
+        flayout.addWidget(self.btn_restaurar)
 
         self.btn_cancelar = QPushButton("Cancelar")
         self.btn_cancelar.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -495,9 +507,14 @@ class PantallaDiccionarios(QWidget):
             )
             return
         self._ruta_actual = ruta
+        self._proceso_actual = proceso
         self._datos_originales = copy.deepcopy(datos)
         self._datos_actuales = copy.deepcopy(datos)
         self._tipo_actual = detectar_tipo(datos)
+
+        # Habilitar restaurar solo si hay backup disponible.
+        tiene_backup = self._svc_backup.tiene_backup(ruta, proceso=proceso)
+        self.btn_restaurar.setEnabled(tiene_backup)
 
         nombre_legible = _nombre_json_legible(proceso, ruta.name)
         self._lbl_titulo.setText(f"{_nombre_proceso(proceso)} / {nombre_legible}")
@@ -621,7 +638,11 @@ class PantallaDiccionarios(QWidget):
                 )
                 return
             try:
-                backup = escribir_json(self._ruta_actual, self._datos_actuales)
+                backup = self._svc_backup.backup_antes_de_escribir(
+                    self._ruta_actual,
+                    self._datos_actuales,
+                    proceso=self._proceso_actual,
+                )
                 cfg = get_config()
                 sufijo = " [PRUEBA]" if cfg.modo_prueba else ""
                 log().info(
@@ -638,11 +659,92 @@ class PantallaDiccionarios(QWidget):
                 )
                 # Actualizamos el snapshot.
                 self._datos_originales = copy.deepcopy(self._datos_actuales)
+                self.btn_restaurar.setEnabled(True)
                 self._actualizar_contador_cambios()
             except Exception as e:
                 log().exception("Error al guardar JSON: %s", e)
                 QMessageBox.critical(
                     self, "Error al guardar", f"No se pudo guardar:\n{e}"
+                )
+
+    def _on_restaurar(self) -> None:
+        if self._ruta_actual is None:
+            return
+
+        tiene_backup = self._svc_backup.tiene_backup(
+            self._ruta_actual,
+            proceso=self._proceso_actual,
+        )
+        if not tiene_backup:
+            QMessageBox.information(
+                self,
+                "Sin backup",
+                "No hay copia de seguridad para este JSON.",
+            )
+            return
+
+        # Si hay cambios sin guardar, advertimos.
+        if self._hay_cambios:
+            resp = QMessageBox.warning(
+                self,
+                "Cambios sin guardar",
+                "Hay cambios sin guardar. Al restaurar el backup se "
+                "perderan.\n\n¿Descartar cambios y restaurar?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if resp != QMessageBox.StandardButton.Yes:
+                return
+
+        resp = QMessageBox.warning(
+            self,
+            "Confirmar restauracion",
+            f"¿Restaurar {self._ruta_actual.name} desde su copia de "
+            f"seguridad?\n\nEl contenido actual se sobrescribira.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if resp != QMessageBox.StandardButton.Yes:
+            return
+
+        with con_lock(self._ruta_actual) as lock:
+            if lock is None:
+                QMessageBox.warning(
+                    self,
+                    "JSON bloqueado",
+                    f"Otro proceso esta usando este JSON.\n\n"
+                    f"{self._ruta_actual.name}\n\n"
+                    "Cierra los procesos que lo esten usando e intenta de nuevo.",
+                )
+                log().warning(
+                    "Diccionarios: lock no adquirido para %s",
+                    self._ruta_actual,
+                )
+                return
+            try:
+                self._svc_backup.restaurar_backup(
+                    self._ruta_actual,
+                    proceso=self._proceso_actual,
+                )
+                cfg = get_config()
+                sufijo = " [PRUEBA]" if cfg.modo_prueba else ""
+                log().info(
+                    "Diccionarios: restaurado backup de %s%s",
+                    self._ruta_actual.name,
+                    sufijo,
+                )
+                QMessageBox.information(
+                    self,
+                    "Restaurado",
+                    f"Se restauro la copia de seguridad de:\n\n"
+                    f"{self._ruta_actual.name}",
+                )
+                # Recargamos el JSON restaurado.
+                self._cargar_json(self._ruta_actual, self._proceso_actual)
+            except Exception as e:
+                log().exception("Error al restaurar backup: %s", e)
+                QMessageBox.critical(
+                    self,
+                    "Error al restaurar",
+                    f"No se pudo restaurar el backup:\n{e}",
                 )
 
 
@@ -1035,7 +1137,7 @@ class EditorTipoB(QWidget):
         layout.setContentsMargins(0, 8, 0, 0)
 
         self._arbol = QTreeWidget()
-        self._arbol.setColumnCount(max(2, len(self._campos) + 1))
+        self._arbol.setColumnCount(max(2, len(self._campos) + 2))
         headers = ["Clave"] + self._campos + [""]
         self._arbol.setHeaderLabels(headers)
         self._arbol.setRootIsDecorated(True)
@@ -1056,16 +1158,18 @@ class EditorTipoB(QWidget):
         fg_color = QColor(p.fg)
         sec_bg = QColor(sec_bg_color)
         for sec, contenido in self.datos.items():
-            sec_item = QTreeWidgetItem([sec])
+            sec_item = QTreeWidgetItem([sec] + [""] * (self._arbol.columnCount() - 1))
             sec_item.setData(0, Qt.ItemDataRole.UserRole, ("seccion", sec))
             sec_item.setBackground(0, sec_bg)
             sec_item.setForeground(0, fg_color)
             self._arbol.addTopLevelItem(sec_item)
             if isinstance(contenido, dict):
                 for k, v in contenido.items():
-                    fields = [
-                        k,
-                    ] + [str(v.get(c, "")) for c in self._campos]
+                    fields = (
+                        [k]
+                        + [str(v.get(c, "")) for c in self._campos]
+                        + [""]
+                    )
                     child = QTreeWidgetItem(fields)
                     child.setFlags(child.flags() | Qt.ItemFlag.ItemIsEditable)
                     child.setData(0, Qt.ItemDataRole.UserRole, ("item", sec, k))
@@ -1073,6 +1177,7 @@ class EditorTipoB(QWidget):
                     for c in range(child.columnCount()):
                         child.setForeground(c, fg_color)
                     sec_item.addChild(child)
+                    self._agregar_boton_eliminar(child, sec, k)
             sec_item.setExpanded(True)
         self._arbol.blockSignals(False)
 
@@ -1119,6 +1224,40 @@ class EditorTipoB(QWidget):
         bg_modif = "#6B5A1F" if p.bg.startswith("#0") or p.bg.startswith("#1") else COLOR_FONDO_MODIF
         item.setBackground(col, QColor(bg_modif))
         item.setForeground(col, QColor(p.fg))
+        self._on_change(self.datos)
+
+    def _agregar_boton_eliminar(
+        self, item: QTreeWidgetItem, seccion: str, clave: str
+    ) -> None:
+        btn = QToolButton()
+        btn.setText("🗑")
+        btn.setToolTip(f"Eliminar '{clave}'")
+        btn.clicked.connect(
+            lambda checked=False, s=seccion, k=clave: self._eliminar(s, k)
+        )
+        cont = QWidget()
+        lay = QHBoxLayout(cont)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addStretch()
+        lay.addWidget(btn)
+        lay.addStretch()
+        self._arbol.setItemWidget(item, len(self._campos) + 1, cont)
+
+    def _eliminar(self, seccion: str, clave: str) -> None:
+        if seccion not in self.datos or clave not in self.datos[seccion]:
+            return
+        del self.datos[seccion][clave]
+        if not self.datos[seccion]:
+            resp = QMessageBox.question(
+                self,
+                "Seccion vacia",
+                f"La seccion '{seccion}' quedo sin entradas.\n\n"
+                "¿Eliminarla tambien?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if resp == QMessageBox.StandardButton.Yes:
+                del self.datos[seccion]
+        self._cargar_arbol()
         self._on_change(self.datos)
 
     def agregar(self) -> None:
@@ -1196,12 +1335,13 @@ class EditorTipoC(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 8, 0, 0)
         self._arbol = QTreeWidget()
-        self._arbol.setColumnCount(2)
-        self._arbol.setHeaderLabels(["Clave", "Valor(es)"])
+        self._arbol.setColumnCount(3)
+        self._arbol.setHeaderLabels(["Clave", "Valor(es)", ""])
         self._arbol.itemChanged.connect(self._on_item_changed)
         hdr = self._arbol.header()
         hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         layout.addWidget(self._arbol)
 
     def _cargar_arbol(self) -> None:
@@ -1212,7 +1352,7 @@ class EditorTipoC(QWidget):
         fg_color = QColor(p.fg)
         sec_bg = QColor(p.surface_alt)
         for sec, contenido in self.datos.items():
-            sec_item = QTreeWidgetItem([sec])
+            sec_item = QTreeWidgetItem([sec, "", ""])
             sec_item.setBackground(0, sec_bg)
             sec_item.setForeground(0, fg_color)
             sec_item.setData(0, Qt.ItemDataRole.UserRole, ("seccion", sec))
@@ -1223,13 +1363,14 @@ class EditorTipoC(QWidget):
                         valor_str = " | ".join(str(x) for x in v)
                     else:
                         valor_str = str(v)
-                    child = QTreeWidgetItem([k, valor_str])
+                    child = QTreeWidgetItem([k, valor_str, ""])
                     child.setFlags(child.flags() | Qt.ItemFlag.ItemIsEditable)
                     child.setData(0, Qt.ItemDataRole.UserRole, ("item", sec, k))
                     # Forzar foreground del tema en cada celda.
                     for c in range(child.columnCount()):
                         child.setForeground(c, fg_color)
                     sec_item.addChild(child)
+                    self._agregar_boton_eliminar(child, sec, k)
             sec_item.setExpanded(True)
         self._arbol.blockSignals(False)
 
@@ -1275,6 +1416,41 @@ class EditorTipoC(QWidget):
         bg_modif = "#6B5A1F" if p.bg.startswith("#0") or p.bg.startswith("#1") else COLOR_FONDO_MODIF
         item.setBackground(1, QColor(bg_modif))
         item.setForeground(1, QColor(p.fg))
+        self._on_change(self.datos)
+
+    def _agregar_boton_eliminar(
+        self, item: QTreeWidgetItem, seccion: str, clave: str
+    ) -> None:
+        btn = QToolButton()
+        btn.setText("🗑")
+        btn.setToolTip(f"Eliminar '{clave}'")
+        btn.clicked.connect(
+            lambda checked=False, s=seccion, k=clave: self._eliminar(s, k)
+        )
+        cont = QWidget()
+        lay = QHBoxLayout(cont)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addStretch()
+        lay.addWidget(btn)
+        lay.addStretch()
+        self._arbol.setItemWidget(item, 2, cont)
+
+    def _eliminar(self, seccion: str, clave: str) -> None:
+        if seccion not in self.datos or clave not in self.datos[seccion]:
+            return
+        del self.datos[seccion][clave]
+        # Si la seccion queda vacia, ofrecemos borrarla.
+        if not self.datos[seccion]:
+            resp = QMessageBox.question(
+                self,
+                "Seccion vacia",
+                f"La seccion '{seccion}' quedo sin entradas.\n\n"
+                "¿Eliminarla tambien?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if resp == QMessageBox.StandardButton.Yes:
+                del self.datos[seccion]
+        self._cargar_arbol()
         self._on_change(self.datos)
 
     def agregar(self) -> None:
