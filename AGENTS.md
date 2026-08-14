@@ -312,6 +312,12 @@ El workflow `release.yml` buildea y crea un draft release en GitHub. El tag debe
 - No tocar widgets directamente desde el worker; comunicar por signals (`terminado`, `error`, `progreso`).
 - El worker captura `BaseException` y nunca debe cerrar la app por un error interno.
 
+### Refresh al cambiar de sección
+
+- `VentanaPrincipal._cambiar_pantalla()` refresca los datos de cada sección al entrar en ella: Inicio (`refrescar_ultimo`), Diccionarios (`refrescar`) y Backups (`refrescar`). Así la UI refleja cambios hechos fuera de la app (por ejemplo, editar un JSON en el IDE) sin reiniciar.
+- `PantallaDiccionarios.refrescar()` reconstruye el árbol conservando secciones expandidas y relee el JSON abierto **solo si no hay cambios sin guardar**; si el archivo desapareció de disco, limpia el editor.
+- Toda pantalla nueva que muestre datos de disco debe exponer un método `refrescar()` y registrarse en `_cambiar_pantalla`.
+
 ---
 
 ## 9. Estrategia de testing

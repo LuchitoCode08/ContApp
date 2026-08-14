@@ -651,9 +651,15 @@ class VentanaPrincipal(QMainWindow):
     def _cambiar_pantalla(self, idx: int) -> None:
         if 0 <= idx < self.stack.count():
             self.stack.setCurrentIndex(idx)
-            # Si volvemos a Inicio, refrescamos el panel de ultimo ejecutado.
+            # Al entrar a cada seccion refrescamos sus datos desde disco
+            # para reflejar cambios hechos fuera de la app (por ejemplo,
+            # editar un JSON en el IDE o crear/restaurar un backup).
             if idx == 0:
                 self.pantalla_inicio.refrescar_ultimo()
+            elif idx == 2:
+                self.pantalla_diccionarios.refrescar()
+            elif idx == 3:
+                self.pantalla_backups.refrescar()
 
     def eventFilter(self, obj, event) -> bool:
         """Cambia el cursor a "mano" cuando el mouse pasa por encima

@@ -403,6 +403,71 @@ class PantallaDiccionarios(QWidget):
             self._arbol.addTopLevelItem(seccion)
             # NO se hace setExpanded(True) -> quedan colapsadas.
 
+    def refrescar(self) -> None:
+        """Relee de disco la lista de JSONs y el JSON abierto.
+
+        Se invoca al entrar a la seccion (ver
+        ``VentanaPrincipal._cambiar_pantalla``) para reflejar cambios
+        hechos fuera de la app mientras estaba abierta: editar un JSON
+        en el IDE, restaurar un backup, o agregar/eliminar archivos.
+
+        - Reconstruye el arbol conservando las secciones expandidas y
+          la seleccion actual.
+        - Si hay un JSON abierto SIN cambios pendientes, lo relee de
+          disco (incluido el estado del boton Restaurar).
+        - Si hay cambios sin guardar, NO toca el editor para no pisar
+          el trabajo del usuario.
+        """
+        # Recordar secciones expandidas (por codigo de proceso).
+        expandidas = []
+        for i in range(self._arbol.topLevelItemCount()):
+            sec = self._arbol.topLevelItem(i)
+            if sec.isExpanded():
+                expandidas.append(sec.data(0, Qt.ItemDataRole.UserRole))
+
+        self._cargar_lista_jsons()
+
+        # Re-expandir: setExpanded dispara itemExpanded -> lazy load.
+        for i in range(self._arbol.topLevelItemCount()):
+            sec = self._arbol.topLevelItem(i)
+            if sec.data(0, Qt.ItemDataRole.UserRole) in expandidas:
+                sec.setExpanded(True)
+
+        if self._ruta_actual is None:
+            return
+
+        # Re-seleccionar el item anterior sin disparar el flujo de
+        # seleccion (que preguntaria por cambios sin guardar).
+        self._arbol.blockSignals(True)
+        for i in range(self._arbol.topLevelItemCount()):
+            sec = self._arbol.topLevelItem(i)
+            for j in range(sec.childCount()):
+                child = sec.child(j)
+                if child.data(0, Qt.ItemDataRole.UserRole) == str(self._ruta_actual):
+                    self._arbol.setCurrentItem(child)
+                    break
+        self._arbol.blockSignals(False)
+
+        if self._hay_cambios:
+            return
+
+        if not self._ruta_actual.exists():
+            # El archivo desaparecio de disco: limpiamos el editor.
+            self._ruta_actual = None
+            self._proceso_actual = ""
+            self._datos_originales = None
+            self._datos_actuales = None
+            self._limpiar_editor()
+            self._lbl_titulo.setText("Selecciona un JSON de la izquierda")
+            self._lbl_ruta.setText("")
+            self.btn_agregar.setEnabled(False)
+            self.btn_restaurar.setEnabled(False)
+            self._actualizar_contador_cambios()
+            return
+
+        # Releer el JSON abierto desde disco.
+        self._cargar_json(self._ruta_actual, self._proceso_actual)
+
     def _on_expandir_seccion(self, item: QTreeWidgetItem) -> None:
         """Lazy load: carga los JSONs del proceso cuando se expande su seccion.
 
