@@ -594,6 +594,21 @@ def test_limpiar_antiguos_filtra_por_dias(
         lambda *a, **k: (14, True),
     ))
 
+    from datetime import datetime as dt_real
+    import ui.ventanas.configuracion as cfg_mod
+    # Congelamos la fecha actual para que el test no dependa del dia de ejecucion.
+    class _FechaFija:
+        @staticmethod
+        def now() -> dt_real:
+            return dt_real(2026, 8, 1, 12, 0, 0)
+        @staticmethod
+        def strptime(*args, **kwargs):
+            return dt_real.strptime(*args, **kwargs)
+        @staticmethod
+        def combine(*args, **kwargs):
+            return dt_real.combine(*args, **kwargs)
+    monkeypatch.setattr(cfg_mod, "datetime", _FechaFija())
+
     from ui.ventanas.configuracion import PantallaConfiguracion
     p = PantallaConfiguracion()
     p._timer.stop()

@@ -15,6 +15,7 @@ from typing import Any
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -31,8 +32,7 @@ from PySide6.QtWidgets import (
 from ui.recursos.tema import _paleta
 
 
-# Acciones disponibles por fila.
-ACCION_AGREGAR = "Agregar a FOAPAL"
+# Texto del checkbox para ignorar un código.
 ACCION_IGNORAR = "Ignorar"
 
 # Valores D/C.
@@ -158,6 +158,8 @@ class DialogoCodigosNuevos(QDialog):
             f"   padding: 6px 14px;"
             f" }}"
             f" QPushButton:hover {{ background-color: {paleta.surface_alt}; }}"
+            f" QCheckBox {{ color: {paleta.fg}; spacing: 6px; }}"
+            f" QCheckBox::indicator {{ width: 16px; height: 16px; }}"
             f" QComboBox {{"
             f"   background-color: {paleta.surface};"
             f"   color: {paleta.fg};"
@@ -180,11 +182,10 @@ class DialogoCodigosNuevos(QDialog):
             item_desc.setFlags(item_desc.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self._tabla.setItem(i, 1, item_desc)
 
-            combo_accion = QComboBox()
-            combo_accion.addItems([ACCION_AGREGAR, ACCION_IGNORAR])
-            combo_accion.setProperty("fila", i)
-            combo_accion.currentIndexChanged.connect(self._on_accion_cambiada)
-            self._tabla.setCellWidget(i, 2, combo_accion)
+            chk_ignorar = QCheckBox(ACCION_IGNORAR)
+            chk_ignorar.setProperty("fila", i)
+            chk_ignorar.stateChanged.connect(self._on_accion_cambiada)
+            self._tabla.setCellWidget(i, 2, chk_ignorar)
 
             for j, campo in enumerate(["Fondo", "Organizacion", "Cuenta", "Programa"], start=3):
                 item = QTableWidgetItem(DEFAULT_FOAPAL[campo])
@@ -204,10 +205,10 @@ class DialogoCodigosNuevos(QDialog):
     def _actualizar_estado_filas(self) -> None:
         """Ajusta editabilidad de celdas FOAPAL según la acción de cada fila."""
         for i in range(self._tabla.rowCount()):
-            combo = self._tabla.cellWidget(i, 2)
-            if combo is None:
+            chk = self._tabla.cellWidget(i, 2)
+            if chk is None:
                 continue
-            agregar = combo.currentText() == ACCION_AGREGAR
+            agregar = not chk.isChecked()
             for col in range(3, 8):
                 if col == 7:
                     combo_dc = self._tabla.cellWidget(i, col)
@@ -223,11 +224,11 @@ class DialogoCodigosNuevos(QDialog):
                             item.setFlags(flags & ~Qt.ItemFlag.ItemIsEditable)
 
     def _ignorar_todos(self) -> None:
-        """Cambia todas las filas a la acción "Ignorar"."""
+        """Marca todos los checkboxes de la columna Ignorar."""
         for i in range(self._tabla.rowCount()):
-            combo = self._tabla.cellWidget(i, 2)
-            if combo is not None:
-                combo.setCurrentText(ACCION_IGNORAR)
+            chk = self._tabla.cellWidget(i, 2)
+            if chk is not None:
+                chk.setChecked(True)
         self._actualizar_estado_filas()
 
     def _guardar(self) -> None:
@@ -235,8 +236,8 @@ class DialogoCodigosNuevos(QDialog):
         decision = DecisionCodigos()
         for i in range(self._tabla.rowCount()):
             codigo = self._tabla.item(i, 0).text()
-            combo = self._tabla.cellWidget(i, 2)
-            if combo.currentText() == ACCION_IGNORAR:
+            chk = self._tabla.cellWidget(i, 2)
+            if chk.isChecked():
                 decision.ignorar.append(codigo)
                 continue
 
