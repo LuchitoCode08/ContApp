@@ -217,7 +217,7 @@ def test_fierro_emite_progreso(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """ProcesoFierro emite multiples llamadas de progreso durante
-    la escritura del Excel (>= 2 con 50 filas).
+    la ejecucion (>= 2 con 50 filas).
     """
     p = _setup_fierro(tmp_path, monkeypatch)
     excel = tmp_path / "fierro.xlsx"
@@ -232,8 +232,8 @@ def test_fierro_emite_progreso(
         [excel], modo_prueba=True, progreso=progreso,
     )
     assert resultado.exito, f"Fallo: {resultado.mensaje}"
-    # Con 50 filas x 2 hojas + encabezados = ~102 filas totales.
-    # Esperamos >= 2 llamadas (1% de 102 = 1).
+    # El progreso se reporta en hitos de la ejecucion (inicio,
+    # entre hojas y al final), no fila a fila.
     assert len(llamadas) >= 2, f"Llamadas: {llamadas}"
 
 
@@ -243,7 +243,6 @@ def test_fierro_cancela_cooperativamente(
     """Si ``cancelado()`` retorna True, ProcesoFierro aborta."""
     p = _setup_fierro(tmp_path, monkeypatch)
     excel = tmp_path / "fierro.xlsx"
-    # 250 filas garantiza >= 1 chequeo (i=100 o i=200).
     _crear_excel_fierro(excel, n_filas=250)
 
     def siempre_cancelado() -> bool:
@@ -257,13 +256,14 @@ def test_fierro_cancela_cooperativamente(
         )
 
 
-def test_fierro_chequea_cancelacion_no_en_cada_fila(
+def test_fierro_chequea_cancelacion_sin_sobrecargar(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """El callback ``cancelado`` se chequea cada 100 filas (muestreo).
+    """El callback ``cancelado`` se chequea en hitos de la ejecucion.
 
-    Esto evita penalizar el rendimiento: en un archivo de 27k filas,
-    ``cancelado`` se llamaria ~270 veces (no 27000).
+    Con ``pd.ExcelWriter`` la escritura es atomica, por lo que el
+    chequeo se hace antes de procesar y entre hojas, sin penalizar
+    el rendimiento.
     """
     p = _setup_fierro(tmp_path, monkeypatch)
     excel = tmp_path / "fierro.xlsx"
@@ -280,11 +280,9 @@ def test_fierro_chequea_cancelacion_no_en_cada_fila(
         modo_prueba=True,
         cancelado=cancelado,
     )
-    # Con 250 filas en 2 hojas + headers = ~502 filas totales.
-    # El chequeo es ``i % 100 == 0``, asi que esperamos >= 2.
+    # Se chequea al inicio y entre las 2 hojas escritas.
     assert len(chequeos) >= 2, f"Chequeos: {len(chequeos)}"
-    # Pero NO uno por fila. Con 502 filas, si fuera por fila serian
-    # ~500. Confirmamos que el muestreo esta activo.
+    # No se debe llamar por cada fila.
     assert len(chequeos) < 50, f"Chequeos excesivos: {len(chequeos)}"
 
 

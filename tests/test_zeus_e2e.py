@@ -66,15 +66,16 @@ def test_validar_archivos_excel_valido(tmp_path: Path) -> None:
 
 
 def test_validar_archivos_bloqueado_en_desarrollo(tmp_path: Path) -> None:
-    """Verifica que mientras EN_DESARROLLO=True, validar bloquea
-    incluso con un archivo valido."""
+    """Si EN_DESARROLLO=True, validar bloquea incluso con un archivo valido."""
     excel = tmp_path / "zeus.xlsx"
     _crear_excel_sintetico(excel)
     proceso = ProcesoZeus()
-    assert proceso.EN_DESARROLLO is True
     error = proceso.validar_archivos([excel])
-    assert error is not None
-    assert proceso.MENSAJE_EN_DESARROLLO in error
+    if proceso.EN_DESARROLLO:
+        assert error is not None
+        assert proceso.MENSAJE_EN_DESARROLLO in error
+    else:
+        assert error is None
 
 
 def test_validar_archivos_sin_archivos() -> None:
@@ -146,7 +147,7 @@ def test_ejecutar_modo_prueba_genera_archivo_en_carpeta_prueba(
     assert len(resultado.archivos_salida) == 1
     salida = resultado.archivos_salida[0]
     assert salida.exists()
-    assert "resultados" in salida.parts
+    assert "zeus" in salida.parts
     assert any(part.startswith("_prueba_") for part in salida.parts)
 
 
@@ -192,7 +193,7 @@ def test_excel_resultado_tiene_hojas_preservadas_y_nuevas(
         wb.close()
     assert "Exportar" in nombres
     assert "Exportar - Copia" in nombres
-    assert "Depurado" in nombres
+    assert "Comprobante" in nombres
 
 
 def test_depurado_aplica_auxiliares_8_a_6_digitos(tmp_path: Path) -> None:
@@ -221,8 +222,8 @@ def test_depurado_aplica_auxiliares_8_a_6_digitos(tmp_path: Path) -> None:
     assert "119021" in cuentas
 
 
-def test_depurado_agrega_columnas_nuevas(tmp_path: Path) -> None:
-    """La hoja 'Depurado' debe tener Valor2, BaseAbs, Tarifa."""
+def test_comprobante_agrega_columnas_nuevas(tmp_path: Path) -> None:
+    """La hoja 'Comprobante' debe tener Valor2, BaseAbs, Tarifa."""
     from openpyxl import load_workbook
 
     excel = tmp_path / "InterfazZeus.xlsx"
@@ -233,7 +234,7 @@ def test_depurado_agrega_columnas_nuevas(tmp_path: Path) -> None:
 
     wb = load_workbook(excel, read_only=True)
     try:
-        ws = wb["Depurado"]
+        ws = wb["Comprobante"]
         header = next(ws.iter_rows(values_only=True))
     finally:
         wb.close()
@@ -254,7 +255,7 @@ def test_resultado_incluye_detalles_de_filas(tmp_path: Path) -> None:
     assert resultado.exito
     assert resultado.detalles is not None
     assert resultado.detalles["filas_originales"] == 2
-    assert resultado.detalles["filas_depurado"] == 2
+    assert resultado.detalles["filas_comprobante"] == 2
 
 
 def test_log_prefix_es_el_de_zeus() -> None:
@@ -265,8 +266,8 @@ def test_log_prefix_es_el_de_zeus() -> None:
 # Errores
 # --------------------------------------------------------------------
 
-def test_ejecutar_excel_sin_cuenta1_retorna_error(tmp_path: Path) -> None:
-    """Si ninguna hoja tiene 'Cuenta1', debe fallar con mensaje claro."""
+def test_ejecutar_excel_sin_hoja_exportar_retorna_error(tmp_path: Path) -> None:
+    """Si el Excel no tiene la hoja 'Exportar', debe fallar con mensaje claro."""
     wb = Workbook()
     ws = wb.active
     ws.title = "SinCuenta1"
@@ -276,4 +277,45 @@ def test_ejecutar_excel_sin_cuenta1_retorna_error(tmp_path: Path) -> None:
     proceso = ProcesoZeus()
     resultado = proceso.ejecutar([tmp_path / "malo.xlsx"], modo_prueba=False)
     assert not resultado.exito
-    assert "cuenta1" in resultado.mensaje.lower()
+    assert "exportar" in resultado.mensaje.lower()
+
+# --------------------------------------------------------------------
+# Agrupacion sin filas vacias
+# --------------------------------------------------------------------
+
+def test_agrupacion_no_genera_filas_vacias(tmp_path: Path) -> None:
+    """Al agrupar por Nit/Cuenta1/Fecha no deben quedar filas NaN."""
+    from openpyxl import load_workbook
+
+    if ProcesoZeus.EN_DESARROLLO:
+        pytest.skip("Zeus esta en desarrollo; ejecutar() bloquea.")
+
+    filas = [
+        # Dos filas agrupables: mismo Nit, Cuenta1 (de 4 digitos) y Fecha.
+        ["890101681", "7101", "D", "100.00", "100.00",
+         "2026-01-15", "Concepto A"],
+        ["890101681", "7101", "D", "200.00", "200.00",
+         "2026-01-15", "Concepto B"],
+        # Una fila no agrupable para conservar mezcla (auxiliar a 6 digitos).
+        ["890101681", "11902101", "D", "1500.00", "1500.00",
+         "2026-01-15", "Concepto C"],
+    ]
+    excel = tmp_path / "ZeusAgrupado.xlsx"
+    _crear_excel_sintetico(excel, filas=filas)
+
+    proceso = ProcesoZeus()
+    resultado = proceso.ejecutar([excel], modo_prueba=False)
+    assert resultado.exito, resultado.mensaje
+
+    # La hoja Comprobante debe tener exactamente 2 filas (grupo colapsado + no agrupable).
+    wb = load_workbook(excel, read_only=True)
+    try:
+        ws = wb["Comprobante"]
+        filas_depurado = list(ws.iter_rows(values_only=True))[1:]
+    finally:
+        wb.close()
+
+    assert len(filas_depurado) == 2
+    # Ninguna fila debe estar completamente vacia.
+    for fila in filas_depurado:
+        assert any(v is not None and v != "" for v in fila)

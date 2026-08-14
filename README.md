@@ -4,7 +4,7 @@ App de escritorio en Python que automatiza 3 procesos manuales de la oficina de 
 
 1. **Generar Comprobante** — desde extractos bancarios en ZIP (CSVs adentro) genera 2 Excel.
 2. **Interfaz Fierro** — depura extractos. Entrada ZIP con CSVs, salida 2 Excel.
-3. **Interfaz Zeus** — depura extractos. Entrada 1 Excel, salida mismo Excel depurado. *(actualmente en desarrollo)*
+3. **Interfaz Zeus** — depura extractos. Entrada 1 Excel, salida mismo Excel depurado.
 
 ## Stack
 
@@ -66,7 +66,7 @@ Demo/
 │   ├── base.py                  # ProcesoBase abstracta
 │   ├── comprobante.py
 │   ├── fierro.py
-│   └── zeus.py                  # EN_DESARROLLO = True
+│   └── zeus.py                  # Activo
 │
 ├── ui/                          # Interfaz gráfica (no sabe de Pandas)
 │   ├── ventanas/                # Pantallas principales
@@ -119,7 +119,7 @@ Demo/
 │   ├── test_config_paths.py     # sys.frozen, RAIZ, JSONS_DIR
 │   ├── test_comprobante_e2e.py
 │   ├── test_fierro_e2e.py
-│   ├── test_zeus_e2e.py         # 4 saltados mientras EN_DESARROLLO=True
+│   ├── test_zeus_e2e.py         # Zeus activo
 │   ├── test_version_utils.py    # semver, comparacion, parsear_release
 │   ├── test_updater_checker.py  # UpdaterChecker + URL mockeada
 │   └── test_updater_downloader.py  # UpdaterDownloader + chunks
@@ -169,7 +169,7 @@ La primera vez que se ejecuta crea `data/usuario.json` automáticamente (tema, m
 python -m pytest
 ```
 
-Estado actual: **153 passed, 4 skipped** (los 4 skipped son los tests de ejecución de Zeus, mientras `EN_DESARROLLO=True`).
+Estado actual: **Zeus activo** (los tests de ejecución de Zeus corren con `EN_DESARROLLO=False`).
 
 ## Empaquetado y release
 

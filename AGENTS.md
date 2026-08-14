@@ -10,7 +10,7 @@
 
 1. **Generar Comprobante** — recibe uno o varios archivos ZIP con CSVs de Bancolombia y genera dos archivos Excel (un comprobante de cinco hojas y un archivo FOAPAL).
 2. **Interfaz Fierro** — depura un Excel de Fierro siguiendo el instructivo KM5 y agrega las hojas `Diario 2026 - Copia` y `Comprobante`.
-3. **Interfaz Zeus** — depura un Excel de Zeus con la hoja `Exportar`. **Actualmente en desarrollo** (`EN_DESARROLLO = True`) y bloqueado en la UI.
+3. **Interfaz Zeus** — depura un Excel de Zeus con la hoja `Exportar`. **Activo** (`EN_DESARROLLO = False`).
 
 La app está pensada para dos usuarios de la oficina de contabilidad, cada uno con sus propios archivos y reglas JSON. La versión actual del repositorio es **1.0.3** (única fuente de verdad: `app/version.py`).
 
@@ -53,7 +53,7 @@ Demo/
 │   ├── base.py                 # ProcesoBase abstracto + ResultadoProceso + ProcesoCancelado
 │   ├── comprobante.py          # ProcesoComprobante
 │   ├── fierro.py               # ProcesoFierro
-│   └── zeus.py                 # ProcesoZeus (EN_DESARROLLO = True)
+│   └── zeus.py                 # ProcesoZeus (activo)
 │
 ├── ui/                         # Interfaz gráfica (no sabe de pandas ni openpyxl)
 │   ├── recursos/tema.py        # Paleta + QSS global (claro/oscuro)
@@ -165,7 +165,7 @@ La cancelación cooperativa usa el callback `cancelado` y la excepción `Proceso
 |---------|---------|--------|-------------|--------|
 | `comprobante` | 1+ archivos `.zip` con CSVs | `YYYY-MM NombreMes Bancolombia.xlsx` + `fzrcoco.xlsx` | 5 JSONs en `jsons/comprobante/` | Activo |
 | `fierro` | 1 Excel `.xlsx`/`.xls` con hoja `Diario 2026` | El mismo Excel + hojas `Diario 2026 - Copia` y `Comprobante` | 3 JSONs en `jsons/fierro/` | Activo |
-| `zeus` | 1 Excel `.xlsx`/`.xls` con hoja `Exportar` | El mismo Excel + hojas `Exportar - Copia` y `Depurado` | 1 JSON en `jsons/zeus/` | **En desarrollo (bloqueado)** |
+| `zeus` | 1 Excel `.xlsx`/`.xls` con hoja `Exportar` | El mismo Excel + hojas `Exportar - Copia` y `Comprobante` | 1 JSON en `jsons/zeus/` | Activo |
 
 Los 5 JSONs de `comprobante` son: `codigos_conceptos.json`, `codigos_contables.json`, `foapal.json`, `nit_bancolombia.json` y `codigos_ignorados.json`. El último guarda los códigos que el usuario decide no agregar a FOAPAL, para no volver a alertar en siguientes ejecuciones.
 
@@ -336,7 +336,7 @@ La suite usa **pytest** y está organizada en tests unitarios, de integración y
 277 passed, 4 skipped, 2 warnings in 11.61s
 ```
 
-- **4 skipped:** tests de ejecución de Zeus (`test_zeus_e2e.py`) porque `EN_DESARROLLO = True`.
+- **Zeus activo:** los tests de ejecución de Zeus (`test_zeus_e2e.py`) ahora corren porque `EN_DESARROLLO = False`.
 - **2 warnings:** `PytestUnraisableExceptionWarning` al cerrar hojas de openpyxl (`WriteOnlyWorksheet` y `WorksheetWriter`) en `test_fierro_chequea_cancelacion_no_en_cada_fila`; no rompen los tests pero indican un resource leak potencial.
 - La inconsistencia del callback `progreso` ya fue resuelta; `tests/test_progreso.py` pasa completamente.
 
@@ -383,7 +383,7 @@ dist/ContApp/
 
 - **Progreso:** resuelto. El callback `progreso` está restaurado en `ProcesoBase` y en las implementaciones; `WorkerEjecucion` y `tests/test_progreso.py` son coherentes.
 - **Preferencias:** resuelto. `data/usuario.json` fue migrado a `data/settings.json` y `app/config.py` delega la persistencia en `SettingsService`.
-- **Zeus bloqueado:** la UI no permite ejecutar Zeus porque `ProcesoZeus.EN_DESARROLLO = True`. Los tests de ejecución de Zeus se saltan.
+- **Zeus activo:** el proceso ya está disponible en la UI (`ProcesoZeus.EN_DESARROLLO = False`).
 - **Ubicación de `jsons/` en el bundle:** resuelto. `app/config.py` busca `jsons/` al lado del ejecutable y hace fallback a `_internal/jsons/`. `scripts/build/build_portable_zip.py` copia `jsons/` a la raíz del bundle antes de comprimir.
 - **pyodc en el bundle:** resuelto. Se instaló `pyodc>=1.5.0` en el entorno virtual y `scripts/build/verify_zip_final.py` confirma que PyInstaller lo incluye (vía `Analysis-00.toc` cuando no aparece como archivo suelto).
 - **Compatibilidad con Inno Setup 7:** resuelto. `ContApp.iss` ahora compila correctamente en IS 7 (precedencia de `and` corregida y uso de `ExpandConstant` en lugar de `SetupSetting`).
