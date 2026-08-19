@@ -36,10 +36,21 @@ def _detectar_jsons_dir() -> Path:
     return lado_exe
 
 
+def _detectar_data_dir() -> Path:
+    """Devuelve la carpeta data/ del proyecto."""
+    lado_exe = RAIZ / "data"
+    if lado_exe.exists():
+        return lado_exe
+    interno = RAIZ / "_internal" / "data"
+    if interno.exists():
+        return interno
+    return lado_exe
+
+
 DOCUMENTS: Path = Path.home() / "Documents"
 JSONS_DIR: Path = _detectar_jsons_dir()
 RESULTADOS_DIR: Path = DOCUMENTS / "ContApp_Resultados"
-DATA_DIR: Path = RAIZ / "data"
+DATA_DIR: Path = _detectar_data_dir()
 PREFERENCIAS: Path = DATA_DIR / "settings.json"
 
 
