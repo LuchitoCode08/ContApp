@@ -163,7 +163,7 @@ class ProcesoComprobante(ProcesoBase):
         codigos_mapeados.update(self.clasificador_conceptos.get("Gastos bancarios", {}).keys())
         codigos_mapeados.update(self.foapal_config.get("creditos", {}).keys())
         codigos_mapeados.update(self.foapal_config.get("debitos", {}).keys())
-        codigos_mapeados.update(self.codigos_ignorados.get("codigos", []))
+        codigos_mapeados.update(self.codigos_ignorados.get("codigos", {}).keys())
 
         codigos_no_encontrados = codigos_csv - codigos_mapeados
         return sorted(codigos_no_encontrados, key=lambda c: (len(c), c))

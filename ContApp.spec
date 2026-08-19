@@ -33,6 +33,7 @@ hiddenimports = (
     collect_submodules("app")
     + collect_submodules("core")
     + collect_submodules("ui")
+    + collect_submodules("events")
     + collect_submodules("pyodc")
     + hiddenimports_pyside
 )
@@ -67,6 +68,7 @@ a = Analysis(
     datas=[
         (str(APP_DIR / "jsons"), "jsons"),
         (str(APP_DIR / "data"), "data"),
+        (str(APP_DIR / "ui" / "ventanas" / "assets"), "ui/ventanas/assets"),
     ],
     hiddenimports=hiddenimports,
     hookspath=[],
@@ -95,6 +97,7 @@ exe = EXE(
     strip=False,
     upx=True,
     console=False,
+    icon=str(APP_DIR / "ui" / "ventanas" / "assets" / "logo_icon.ico"),
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

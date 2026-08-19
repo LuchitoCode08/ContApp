@@ -64,7 +64,7 @@ Archivo de referencia: `CONTAPP.png` (exportación del boceto de Figma).
 |---|---|
 | **Inicio** | Pantalla de bienvenida, acceso rápido y resumen visual de la app. |
 | **Procesos** | Selector de proceso, zona para arrastrar archivos, ejecución y visualización del resultado. |
-| **Diccionarios** | Listado de JSONs de reglas y editor simple para modificarlos. |
+| **Diccionarios** | Listado de JSONs de reglas y editor tipo tabla de Excel para modificarlos. |
 
 > La paleta exacta, animaciones, textos, botones y mensajes se definirán iterativamente durante el desarrollo, usando el Figma como fuente de verdad visual.
 
@@ -115,12 +115,15 @@ ContApp/
 │   │   ├── principal.py        # VentanaPrincipal con topbar y tabs.
 │   │   ├── inicio.py           # Pantalla de inicio.
 │   │   ├── procesos.py         # Pantalla de ejecución de procesos.
-│   │   └── diccionarios.py     # Pantalla de edición de JSONs.
+│   │   ├── diccionarios.py     # Pantalla de edición de JSONs.
+│   │   └── dialogo_codigos_nuevos.py  # Diálogo para códigos de concepto no mapeados (Comprobante).
 │   └── widgets/                # DropZone, tarjetas, switches, etc.
 │
 └── tests/                      # Suite reducida.
     ├── __init__.py
+    ├── test_archivos.py
     ├── test_comprobante.py
+    ├── test_dialogo_codigos_nuevos.py
     ├── test_fierro.py
     ├── test_zeus.py
     └── test_json_manager.py
@@ -167,6 +170,7 @@ Fusionar las responsabilidades de `procesos/`, `utils/` y `services/` en una sol
 
 - `base.py`: `ProcesoBase`, `ResultadoProceso` y `ProcesoCancelado`.
 - `comprobante.py`, `fierro.py`, `zeus.py`: lógica de cada proceso.
+- `comprobante.py` detecta códigos de concepto no mapeados antes de ejecutar y expone `obtener_codigos_desconocidos()` para la UI.
 - `archivos.py`: utilidades de manejo de archivos y carpetas mensuales.
 - `json_manager.py`: lectura/escritura de JSONs. Sin backups automáticos, sin locks, sin detección de tipo compleja.
 
@@ -183,8 +187,9 @@ Se mantiene como mecanismo de desacoplamiento entre la UI y los procesos. No ree
 
 ### 5.5. `data/`
 
-- `data/settings.json`: preferencias mínimas (última carpeta usada, tema, etc.).
-- Eliminar `data/backups/` y `data/bitacora/`.
+- `data/settings.json`: preferencias mínimas (tema, modo prueba).
+- `data/backups/`: copias de seguridad locales de JSONs editados por la app (por ejemplo, al gestionar códigos nuevos en Comprobante).
+- Eliminar `data/bitacora/`.
 
 ---
 
@@ -214,12 +219,17 @@ Se mantiene como mecanismo de desacoplamiento entre la UI y los procesos. No ree
 - Indicador de progreso.
 - Área de resultado/mensaje final.
 - El estado de `modo_prueba` se lee del toggle de la topbar.
+- Para **Comprobante**, antes de ejecutar se escanean los CSVs en busca de códigos de concepto no mapeados. Si los hay, se muestra el diálogo `DialogoCodigosNuevos` para que el usuario decida:
+  - **Agregar a FOAPAL**: completando Fondo, Organización, Cuenta, Programa y D/C.
+  - **Ignorar**: guardar el código en `codigos_ignorados.json` con su descripción.
+- Antes de modificar `foapal.json` o `codigos_ignorados.json` se crea una copia de seguridad en `data/backups/comprobante/`.
 
 ### 6.4. Pantalla de Diccionarios (`ui/ventanas/diccionarios.py`)
 
 - Listado de JSONs organizados por proceso.
-- Editor de texto simple (lectura/escritura directa del archivo).
-- Botón guardar.
+- Editor visual tipo tabla de Excel con edición directa de celdas.
+- Buscador / filtro dinámico.
+- Botón guardar con validación de sintaxis.
 - Sin backup automático, sin gestión de versiones.
 
 ### 6.5. Tema (`ui/recursos/tema.py`)
@@ -259,7 +269,7 @@ Eliminar archivos y carpetas que ya no aportan valor en la versión simplificada
 - [x] 2. **Reestructuración**: mover `procesos/`, `utils/` y `services/` a `core/`.
 - [x] 3. **Simplificación interna**: quitar DI, bitácora, updater, services.
 - [x] 4. **Refactor UI**: implementar topbar con tabs y tres pantallas simples (Inicio, Procesos, Diccionarios en tabla).
-- [x] 5. **Ajuste de tests**: reducir la suite a tests esenciales (48/48 tests OK).
+- [x] 5. **Ajuste de tests**: reducir la suite a tests esenciales y recuperar tests del diálogo de códigos nuevos (56/56 tests OK).
 - [x] 6. **Build**: actualizar `ContApp.spec` y verificar bundle portable (`dist/ContApp/ContApp.exe`).
 - [x] 7. **Documentación**: asegurar que `README.md` y `simple_refactor.md` reflejen el estado final.
 
@@ -301,7 +311,7 @@ Resultado: `dist/ContApp/ContApp.exe` + `_internal/` + `jsons/`.
 
 - **Idioma**: todo el código y mensajes al usuario en español, siguiendo la convención actual.
 - **Separación core/UI**: `core/` no importa PySide6; `ui/` no importa pandas ni openpyxl.
-- **JSONs**: se mantienen editables manualmente o desde la pestaña Diccionarios. No hay backup automático.
+- **JSONs**: se mantienen editables manualmente o desde la pestaña Diccionarios. No hay backup automático, salvo para `foapal.json` y `codigos_ignorados.json` al gestionar códigos nuevos en Comprobante.
 - **Modo prueba**: estado global en la topbar. Todo proceso debe respetarlo sin escribir archivos reales cuando está activo.
 - **Procesos**: continúan heredando de `ProcesoBase` y reportan progreso mediante callbacks.
 - **No hay actualizaciones automáticas**: las nuevas versiones se distribuyen manualmente.

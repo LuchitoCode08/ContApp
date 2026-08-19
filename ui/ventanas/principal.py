@@ -1,8 +1,11 @@
 """Ventana principal de ContApp con Topbar fija y navegación por pestañas."""
 from __future__ import annotations
 
+import os # Aún necesario para algunas operaciones, aunque priorizamos pathlib
+from pathlib import Path # <-- IMPORTANTE: Volvemos a importar pathlib
+
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QIcon # <-- IMPORTANTE: Importamos QIcon
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -30,12 +33,37 @@ class VentanaPrincipal(QMainWindow):
         super().__init__()
         self._config = get_config()
         self.setWindowTitle("ContApp")
+        
+        # --- APLICACIÓN DEL ICONO ---
+        self._establecer_icono()
+        # ----------------------------
+
         self.resize(1080, 680)
         self.setMinimumSize(920, 580)
 
         self._construir_ui()
 
+    def _establecer_icono(self) -> None:
+        """Carga y establece el icono de la ventana de forma segura."""
+        # 1. Resolvemos la ruta absoluta a la carpeta 'assets'
+        # __file__ es este archivo (ui/ventana_principal.py)
+        # .parent es la carpeta 'ui/'
+        # / "assets" es ui/assets/
+        carpeta_assets = Path(__file__).resolve().parent / "assets"
+        
+        # 2. Definimos la ruta completa al archivo SVG
+        ruta_icono_svg = carpeta_assets / "logo_icon.svg"
+
+        # 3. Verificamos si existe y lo aplicamos
+        if ruta_icono_svg.exists():
+            # QIcon necesita la ruta como una cadena de texto (string)
+            self.setWindowIcon(QIcon(str(ruta_icono_svg)))
+        else:
+            # Opcional: un aviso en consola si trabajas en desarrollo
+            print(f"Aviso: No se encontró el icono en {ruta_icono_svg}")
+
     def _construir_ui(self) -> None:
+        # ... (resto de tu código base sin cambios) ...
         # Widget contenedor central
         contenedor = QWidget()
         layout_principal = QVBoxLayout(contenedor)
@@ -68,6 +96,7 @@ class VentanaPrincipal(QMainWindow):
         # Seleccionar Inicio por defecto
         self._seleccionar_tab(0)
 
+    # ... (resto de tus métodos de navegación y creación de topbar sin cambios) ...
     def _navegar_a_proceso(self, key: str) -> None:
         self._seleccionar_tab(1)
         self._pag_procesos._seleccionar_proceso(key)
@@ -131,5 +160,3 @@ class VentanaPrincipal(QMainWindow):
     def _on_modo_prueba_cambiado(self, activo: bool) -> None:
         self._config.modo_prueba = activo
         self._config.guardar_preferencias()
-
-

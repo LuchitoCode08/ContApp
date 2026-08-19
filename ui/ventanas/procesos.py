@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal
@@ -11,17 +13,20 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QProgressBar,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
-from app.config import get_config
+from app.config import DATA_DIR, get_config
 from core.base import ProcesoBase, ResultadoProceso
 from core.comprobante import ProcesoComprobante
 from core.fierro import ProcesoFierro
+from core.json_manager import escribir_json, leer_json
 from core.zeus import ProcesoZeus
+from ui.ventanas.dialogo_codigos_nuevos import DecisionCodigos, DialogoCodigosNuevos
 from ui.widgets.drop_zone import DropZone
 
 
@@ -344,6 +349,61 @@ class VistaProcesos(QWidget):
         self._btn_vaciar.setEnabled(n > 0)
         self._btn_ejecutar.setEnabled(n > 0)
 
+    def _aplicar_decision_codigos(self, decision: DecisionCodigos) -> bool:
+        """Persiste la decisión del usuario haciendo backup previo.
+
+        Retorna True si se escribieron cambios correctamente.
+        """
+        json_dir = self._config.ruta_json("comprobante", "foapal.json").parent
+        foapal_path = json_dir / "foapal.json"
+        ignorados_path = json_dir / "codigos_ignorados.json"
+
+        backup_dir = DATA_DIR / "backups" / "comprobante"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            if decision.agregar or decision.ignorar:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                for origen in (foapal_path, ignorados_path):
+                    if origen.exists():
+                        destino = backup_dir / f"{timestamp}_{origen.name}"
+                        shutil.copy2(str(origen), str(destino))
+
+            foapal = leer_json(foapal_path)
+            ignorados = leer_json(ignorados_path)
+
+            for codigo, campos in decision.agregar.items():
+                dc = campos.get("D/C", "D")
+                seccion = "creditos" if dc == "C" else "debitos"
+                foapal.setdefault(seccion, {})[codigo] = {
+                    "Fondo": campos["Fondo"],
+                    "Organizacion": campos["Organizacion"],
+                    "Cuenta": campos["Cuenta"],
+                    "Programa": campos["Programa"],
+                    "D/C": dc,
+                }
+
+            if decision.ignorar:
+                ignorados.setdefault("codigos", {}).update(decision.ignorar)
+                # Normalizar: ordenar por longitud y luego valor.
+                ignorados["codigos"] = dict(
+                    sorted(ignorados["codigos"].items(), key=lambda c: (len(c[0]), c[0]))
+                )
+
+            if decision.agregar:
+                escribir_json(foapal_path, foapal)
+            if decision.ignorar:
+                escribir_json(ignorados_path, ignorados)
+
+            return True
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Error al guardar códigos",
+                f"No se pudieron guardar los cambios en los JSONs:\n{e}",
+            )
+            return False
+
     def _iniciar_ejecucion(self) -> None:
         archivos = self._drop_zone.obtener_archivos()
         if not archivos:
@@ -356,6 +416,49 @@ class VistaProcesos(QWidget):
             self._lbl_res_estado.setStyleSheet("font-weight: 700; font-size: 13px; color: #DC2626;")
             self._lbl_res_detalle.setText(error)
             return
+
+        # Escaneo de códigos de concepto nuevos solo para Comprobante.
+        # Se ejecuta en el hilo principal para poder mostrar el diálogo modal.
+        if self._proceso_activo_key == "comprobante" and isinstance(proceso, ProcesoComprobante):
+            try:
+                self._lbl_res_estado.setText("Revisando códigos de concepto...")
+                self._lbl_res_estado.setStyleSheet(
+                    "font-weight: 700; font-size: 13px; color: #2563EB;"
+                )
+                codigos, descripciones = proceso.obtener_codigos_desconocidos(list(archivos))
+            except Exception as e:
+                QMessageBox.critical(
+                    self,
+                    "Error al escanear códigos",
+                    f"No se pudieron revisar los códigos de concepto:\n{e}",
+                )
+                self._lbl_res_estado.setText("Resultado del Proceso")
+                self._lbl_res_estado.setStyleSheet(
+                    "font-weight: 700; font-size: 14px; color: #1E293B;"
+                )
+                return
+
+            if codigos:
+                decision = DialogoCodigosNuevos.solicitar_decision(
+                    self, codigos, descripciones
+                )
+                if decision is None:
+                    self._lbl_res_estado.setText("Ejecución cancelada")
+                    self._lbl_res_estado.setStyleSheet(
+                        "font-weight: 700; font-size: 13px; color: #DC2626;"
+                    )
+                    self._lbl_res_detalle.setText(
+                        "Cancelaste la gestión de códigos nuevos. "
+                        "No se ejecutó el proceso."
+                    )
+                    return
+
+                if not self._aplicar_decision_codigos(decision):
+                    return
+
+                # Recrear la instancia para que cargue los JSONs actualizados.
+                proceso = ProcesoComprobante()
+                self._instancias_procesos["comprobante"] = proceso
 
         # Deshabilitar controles
         self._btn_ejecutar.setEnabled(False)

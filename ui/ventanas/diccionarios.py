@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.config import JSONS_DIR
+from app.config import DATA_DIR, JSONS_DIR
 
 # Estructura organizada de los JSONs del sistema
 DICCIONARIOS_SISTEMA: dict[str, list[tuple[str, str]]] = {
@@ -341,6 +342,29 @@ class VistaDiccionarios(QWidget):
         self._btn_descartar.clicked.connect(self._recargar_archivo)
         fila_acciones.addWidget(self._btn_descartar)
 
+        # Botón Restaurar último backup
+        self._btn_restaurar_backup = QPushButton("Restaurar último backup")
+        self._btn_restaurar_backup.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_restaurar_backup.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #FEF3C7;
+                color: #B45309;
+                border: 1px solid #FDE68A;
+                border-radius: 8px;
+                padding: 8px 16px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #F59E0B;
+                color: #FFFFFF;
+                border-color: #D97706;
+            }
+            """
+        )
+        self._btn_restaurar_backup.clicked.connect(self._restaurar_ultimo_backup)
+        fila_acciones.addWidget(self._btn_restaurar_backup)
+
         # Botón Guardar (Azul primario)
         self._btn_guardar = QPushButton("Guardar cambios")
         self._btn_guardar.setObjectName("primary")
@@ -472,12 +496,20 @@ class VistaDiccionarios(QWidget):
             self._tabla.setRowCount(0)
 
             if "codigos_ignorados.json" in rel:
-                columnas = ["Código Ignorado"]
+                columnas = ["Código Ignorado", "Descripción / Concepto"]
                 self._tabla.setColumnCount(len(columnas))
                 self._tabla.setHorizontalHeaderLabels(columnas)
-                lista = datos.get("codigos", []) if isinstance(datos, dict) else (datos if isinstance(datos, list) else [])
-                for cod in lista:
-                    self._insertar_fila_valores([str(cod)])
+                if isinstance(datos, dict):
+                    items = datos.get("codigos", {})
+                    if isinstance(items, dict):
+                        for cod, desc in items.items():
+                            self._insertar_fila_valores([str(cod), str(desc)])
+                    elif isinstance(items, list):
+                        for cod in items:
+                            self._insertar_fila_valores([str(cod), ""])
+                else:
+                    for cod in (datos if isinstance(datos, list) else []):
+                        self._insertar_fila_valores([str(cod), ""])
 
             elif "mapeo_tarjetas.json" in rel:
                 columnas = ["Patrón Expresión Regular", "Descripción Reemplazo"]
@@ -647,11 +679,12 @@ class VistaDiccionarios(QWidget):
 
         # 3. Códigos Ignorados
         elif "codigos_ignorados.json" in rel:
-            codigos = []
+            codigos: dict[str, str] = {}
             for r in range(self._tabla.rowCount()):
-                val = self._obtener_texto_celda(r, 0).strip()
-                if val:
-                    codigos.append(val)
+                cod = self._obtener_texto_celda(r, 0).strip()
+                desc = self._obtener_texto_celda(r, 1).strip()
+                if cod:
+                    codigos[cod] = desc
             return {"codigos": codigos}
 
         # 4. Mapeo de Tarjetas
@@ -765,6 +798,47 @@ class VistaDiccionarios(QWidget):
             self._mostrar_feedback(f"✓ Guardado exitoso: {total_items} registros actualizados en '{ruta_absoluta.name}'.", es_error=False)
         except Exception as e:
             self._mostrar_feedback(f"✕ Error al escribir en disco: {e}", es_error=True)
+
+    def _restaurar_ultimo_backup(self) -> None:
+        """Restaura el archivo activo desde su backup más reciente."""
+        ruta_absoluta = JSONS_DIR / self._archivo_activo_rel
+        backup_dir = DATA_DIR / "backups" / "comprobante"
+
+        if not backup_dir.exists():
+            self._mostrar_feedback("No existen backups para restaurar.", es_error=True)
+            return
+
+        nombre_archivo = ruta_absoluta.name
+        backups = sorted(
+            [p for p in backup_dir.iterdir() if p.is_file() and p.name.endswith(f"_{nombre_archivo}")],
+            key=lambda p: p.name,
+            reverse=True,
+        )
+
+        if not backups:
+            self._mostrar_feedback(f"No se encontró backup para '{nombre_archivo}'.", es_error=True)
+            return
+
+        ultimo_backup = backups[0]
+
+        from PySide6.QtWidgets import QMessageBox
+        respuesta = QMessageBox.question(
+            self,
+            "Restaurar backup",
+            f"Se va a restaurar '{nombre_archivo}' desde el backup:\n\n{ultimo_backup.name}\n\n"
+            "Esta acción reemplazará el archivo actual. ¿Continuar?",
+        )
+        if respuesta != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            shutil.copy2(str(ultimo_backup), str(ruta_absoluta))
+            self._recargar_archivo()
+            self._mostrar_feedback(
+                f"✓ Restaurado desde backup: {ultimo_backup.name}", es_error=False
+            )
+        except Exception as e:
+            self._mostrar_feedback(f"✕ Error al restaurar backup: {e}", es_error=True)
 
     def _mostrar_feedback(self, mensaje: str, es_error: bool = False) -> None:
         if es_error:

@@ -1,7 +1,7 @@
 """Definicion de los eventos que viajan por el EventBus.
 
 Estos dataclasses ``frozen=True`` son los mensajes que emiten los
-procesos / servicios y consumen la UI / bitacora / plugins futuros.
+procesos y consumen la UI.
 
 Por que ``frozen=True``: los eventos pueden cruzar threads (QThread del
 worker al main thread de la UI). Usar dataclasses inmutables evita
@@ -29,8 +29,7 @@ class ProgresoProceso(EventoBase):
 
     Refleja el ``callback progreso(actual, total)`` que los procesos
     invocan. La UI ya recibe esto via el Signal Qt ``progreso`` del
-    WorkerEjecucion; este evento es para consumidores no-UI (bitacora,
-    plugins futuros).
+    WorkerEjecucion; este evento es para futuros consumidores no-UI.
     """
     proceso: str
     actual: int

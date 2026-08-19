@@ -5,13 +5,18 @@ import sys
 import zipfile
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
 if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
-from core.comprobante import ProcesoComprobante
+from core.comprobante import (
+    COL_CODIGO_CONCEPTO,
+    COL_CONCEPTO,
+    ProcesoComprobante,
+)
 
 LINEA_VALIDA = (
     "47789085868,DESCRIPCION PRUEBA,1234.56,15072026,FOPNAL,13201,"
@@ -147,3 +152,58 @@ def test_ejecutar_procesa_todos_los_zips(
 
     assert resultado.exito, f"Fallo: {resultado.mensaje}"
     assert resultado.detalles["filas_origen"] == 6
+
+
+def _df_con_codigos(codigos: list[tuple[str, str]]) -> pd.DataFrame:
+    """Crea un DataFrame con las columnas mínimas necesarias."""
+    data: list[list[str]] = []
+    for codigo, descripcion in codigos:
+        fila = [""] * 10
+        fila[COL_CODIGO_CONCEPTO] = codigo
+        fila[COL_CONCEPTO] = descripcion
+        data.append(fila)
+    return pd.DataFrame(data)
+
+
+def test_verificar_codigos_conceptos_detecta_desconocido(
+    proceso: ProcesoComprobante,
+) -> None:
+    """Detecta un código que no está en ningún JSON del proceso."""
+    df = _df_con_codigos([("9999", "CONCEPTO DESCONOCIDO")])
+    desconocidos = proceso.verificar_codigos_conceptos(df)
+    assert desconocidos == ["9999"]
+
+
+def test_verificar_no_detecta_codigo_conocido(
+    proceso: ProcesoComprobante,
+) -> None:
+    """No alerta códigos que ya existen en codigos_conceptos.json."""
+    codigo_conocido = next(iter(proceso.clasificador_conceptos["Gastos bancarios"]))
+    df = _df_con_codigos([(codigo_conocido, "CONOCIDO")])
+    assert proceso.verificar_codigos_conceptos(df) == []
+
+
+def test_verificar_no_detecta_codigo_ignorado(
+    proceso: ProcesoComprobante,
+) -> None:
+    """No alerta códigos que están en codigos_ignorados.json."""
+    proceso.codigos_ignorados["codigos"] = {"7777": "IGNORADO"}
+    df = _df_con_codigos([("7777", "IGNORADO")])
+    assert proceso.verificar_codigos_conceptos(df) == []
+
+
+def test_obtener_codigos_desconocidos_desde_zip(
+    proceso: ProcesoComprobante, tmp_path: Path,
+) -> None:
+    """Lee un ZIP y detecta códigos desconocidos con sus descripciones."""
+    linea = (
+        "47789085868,PREF,AHORRO,15072026,ID,1234.56,8888,CONCEPTO NUEVO,0,9999"
+    )
+    zip_path = tmp_path / "movimientos.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("mov.csv", linea.encode("utf-8"))
+
+    codigos, descripciones = proceso.obtener_codigos_desconocidos([zip_path])
+
+    assert codigos == ["8888"]
+    assert descripciones.get("8888") == "CONCEPTO NUEVO"

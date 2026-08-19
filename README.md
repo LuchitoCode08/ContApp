@@ -26,12 +26,14 @@
   - Barra de progreso fija en tiempo real.
   - Panel de resultados ampliado con botón directo **`Abrir ubicación →`**.
   - Ejecución en segundo plano (`QThread`) para evitar bloqueos en la interfaz.
+  - **Detección de códigos de concepto nuevos** en Comprobante: antes de ejecutar, la app revisa los CSVs y permite agregarlos a FOAPAL o ignorarlos, con backup automático de los JSONs.
 - **Editor de Diccionarios y Reglas tipo Excel**:
   - Sub-sidebar con los 8 archivos JSON del sistema agrupados por proceso.
   - Editor interactivo en **tabla de cálculo** con edición directa de celdas.
   - **Pestañas de categorías superiores** para *FOAPAL* (`Créditos` / `Débitos`) y *Códigos de Conceptos* (`Intereses` / `Gastos bancarios`).
   - Buscador / Filtro dinámico en tiempo real (`🔍 Filtrar registros...`).
   - Botones para agregar/eliminar filas y guardar con validación de sintaxis.
+  - **Restaurar último backup** para `foapal.json` y `codigos_ignorados.json` directamente desde el editor.
 
 ---
 
@@ -63,7 +65,8 @@ ContApp/
 │   │   ├── principal.py        # Ventana principal con Topbar y QStackedWidget
 │   │   ├── inicio.py           # Dashboard de bienvenida y accesos directos
 │   │   ├── procesos.py         # Pantalla de selección y ejecución de procesos
-│   │   └── diccionarios.py     # Editor de reglas en tabla interactiva tipo Excel
+│   │   ├── diccionarios.py     # Editor de reglas en tabla interactiva tipo Excel
+│   │   └── dialogo_codigos_nuevos.py # Diálogo para gestionar códigos de concepto nuevos
 │   └── widgets/
 │       ├── logo.py             # Logotipo "C" vectorial antialiased
 │       ├── drop_zone.py        # Zona Drag & Drop con lista interactiva
@@ -75,12 +78,10 @@ ContApp/
 │   ├── fierro/
 │   └── zeus/
 │
-├── data/                       # Preferencias del usuario
-│   └── settings.json
-│
 └── tests/                      # Suite completa de pruebas unitarias (Pytest)
     ├── test_archivos.py
     ├── test_comprobante.py
+    ├── test_dialogo_codigos_nuevos.py
     ├── test_fierro.py
     ├── test_json_manager.py
     └── test_zeus.py
@@ -127,7 +128,11 @@ dist\ContApp\ContApp.exe
 2. Arrastra uno o varios archivos `.zip` de extractos a la zona de carga (o haz clic en **Examinar archivos...**).
 3. Si cargaste un archivo por error, pulsa su botón **`✕`** para quitarlo individualmente.
 4. Pulsa **Ejecutar proceso**.
-5. Al finalizar, pulsa **`Abrir ubicación →`** para acceder a los archivos Excel generados en tu carpeta `Documentos\ContApp_Resultados\Comprobante\`.
+5. Si aparecen códigos de concepto no mapeados, el diálogo **"Nuevos códigos de concepto"** te permitirá:
+   - **Agregar a FOAPAL** completando Fondo, Organización, Cuenta, Programa y D/C.
+   - **Ignorar** el código para que no vuelva a aparecer (se guarda con su descripción).
+   - Antes de modificar nada, se crea una copia de seguridad de `foapal.json` y `codigos_ignorados.json` en `Documentos\ContApp_Resultados\data\backups\comprobante\`.
+6. Al finalizar, pulsa **`Abrir ubicación →`** para acceder a los archivos Excel generados en tu carpeta `Documentos\ContApp_Resultados\Comprobante\`.
 
 ### 2. Interfaz Fierro
 1. Selecciona **Interfaz Fierro** en el sub-sidebar.
@@ -148,6 +153,7 @@ dist\ContApp\ContApp.exe
 4. En archivos con varias categorías (*FOAPAL* o *Códigos de Conceptos*), utiliza las pestañas superiores para alternar entre categorías.
 5. Edita las celdas directamente en la tabla, usa `+ Agregar fila` o `✕ Eliminar fila`.
 6. Haz clic en **Guardar cambios** para aplicar las nuevas reglas de inmediato.
+7. Si necesitas volver atrás, selecciona *FOAPAL* o *Códigos Ignorados* y pulsa **Restaurar último backup**. La app reemplazará el archivo actual con la copia de seguridad más reciente.
 
 ---
 
@@ -159,7 +165,7 @@ Para validar que todos los cálculos, transformaciones contables y utilidades fu
 pytest tests/ -v
 ```
 
-Resultado: **48 de 48 pruebas aprobadas (100% pasando)**.
+Resultado: **56 de 56 pruebas aprobadas (100% pasando)**.
 
 ---
 
