@@ -255,13 +255,13 @@ Eliminar archivos y carpetas que ya no aportan valor en la versión simplificada
 
 ## 8. Fases de refactorización
 
-1. **Limpieza**: eliminar archivos y carpetas no necesarios.
-2. **Reestructuración**: mover `procesos/`, `utils/` y `services/` a `core/`.
-3. **Simplificación interna**: quitar DI, bitácora, updater, services.
-4. **Refactor UI**: implementar topbar con tabs y tres pantallas simples.
-5. **Ajuste de tests**: reducir la suite a tests esenciales.
-6. **Build**: actualizar `ContApp.spec` y verificar bundle portable.
-7. **Documentación**: asegurar que `README.md` y `simple_refactor.md` reflejen el estado final.
+- [x] 1. **Limpieza**: eliminar archivos y carpetas no necesarios.
+- [x] 2. **Reestructuración**: mover `procesos/`, `utils/` y `services/` a `core/`.
+- [x] 3. **Simplificación interna**: quitar DI, bitácora, updater, services.
+- [x] 4. **Refactor UI**: implementar topbar con tabs y tres pantallas simples (Inicio, Procesos, Diccionarios en tabla).
+- [x] 5. **Ajuste de tests**: reducir la suite a tests esenciales (48/48 tests OK).
+- [x] 6. **Build**: actualizar `ContApp.spec` y verificar bundle portable (`dist/ContApp/ContApp.exe`).
+- [x] 7. **Documentación**: asegurar que `README.md` y `simple_refactor.md` reflejen el estado final.
 
 ---
 
