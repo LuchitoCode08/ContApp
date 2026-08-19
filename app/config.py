@@ -1,64 +1,32 @@
-"""Configuracion global de ContApp (singleton).
+"""Configuración global de ContApp (singleton).
 
 Centraliza:
-- rutas del proyecto (raiz, jsons, resultados, log)
-- usuario activo
+- rutas del proyecto (raiz, jsons, resultados, data)
 - modo_prueba (True/False)
-- tema (claro / oscuro)
+- tema (claro)
 - procesos disponibles
-
-La UI y los modulos de ``core`` leen esta config; nadie lee rutas
-ni constantes del entorno directamente.
-
-Persistencia:
-- usuario, modo_prueba y tema se guardan en ``data/settings.json``.
-- Al arrancar se cargan; al cambiar el modo_prueba o el tema, se
-  guardan inmediatamente.
-- ``SettingsService`` se encarga de la lectura/escritura y de la
-  migracion automatica desde el viejo ``data/usuario.json``.
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from services.settings_service import SettingsService
-
 
 def _detectar_raiz() -> Path:
-    """Devuelve la raiz del proyecto según el contexto de ejecucion.
-
-    - En desarrollo (corriendo ``python main.py``): directorio donde esta
-      ``main.py`` (2 niveles arriba de ``app/config.py``).
-    - Empaquetado con PyInstaller (``--onedir`` o ``--onefile``): directorio
-      donde esta el ejecutable. Asi ``jsons/`` queda al lado del .exe,
-      que es lo que queremos para que el usuario pueda editar las reglas
-      sin recompilar.
-
-    Detecta el caso empaquetado con ``getattr(sys, "frozen", False)``,
-    que PyInstaller setea automaticamente.
-    """
+    """Devuelve la raíz del proyecto según el contexto de ejecución."""
     if getattr(sys, "frozen", False):
-        # Ejecutandose como .exe -> el "raiz" es donde esta el binario.
         return Path(sys.executable).resolve().parent
-    # Desarrollo: 2 niveles arriba de app/config.py -> raiz del proyecto.
     return Path(__file__).resolve().parent.parent
 
 
-# Raiz del proyecto.
 RAIZ: Path = _detectar_raiz()
 
-def _detectar_jsons_dir() -> Path:
-    """Devuelve la carpeta jsons/ del proyecto.
 
-    En desarrollo (``python main.py``) vive al lado de ``main.py``. En el
-    bundle de PyInstaller puede estar al lado del ejecutable (preferido,
-    para que el usuario edite las reglas) o dentro de ``_internal/jsons``
-    si PyInstaller coloco los datos ahi. Buscamos primero al lado del exe
-    y hacemos fallback a _internal/jsons.
-    """
+def _detectar_jsons_dir() -> Path:
+    """Devuelve la carpeta jsons/ del proyecto."""
     lado_exe = RAIZ / "jsons"
     if lado_exe.exists():
         return lado_exe
@@ -68,92 +36,53 @@ def _detectar_jsons_dir() -> Path:
     return lado_exe
 
 
-# Carpetas importantes (relativas a la raiz).
 DOCUMENTS: Path = Path.home() / "Documents"
 JSONS_DIR: Path = _detectar_jsons_dir()
 RESULTADOS_DIR: Path = DOCUMENTS / "ContApp_Resultados"
-
-
-def _data_dir() -> Path:
-    """Directorio de estado (data/). Tests pueden monkey-patchear esta funcion."""
-    return RAIZ / "data"
-
-
-def _log_dir() -> Path:
-    """Directorio de logs (log/). Tests pueden monkey-patchear esta funcion."""
-    return RAIZ / "log"
-
-
-# Aliases para compatibilidad con el codigo existente.
-DATA_DIR: Path = _data_dir()
-LOG_DIR: Path = _log_dir()
-BITACORA_DIR: Path = LOG_DIR
-BITACORA_LOG: Path = LOG_DIR / "bitacora.log"
-
-# Archivo donde se persisten las preferencias del usuario.
+DATA_DIR: Path = RAIZ / "data"
 PREFERENCIAS: Path = DATA_DIR / "settings.json"
 
 
 @dataclass
 class Config:
-    """Estado global de la app."""
+    """Estado global de la aplicación."""
 
     usuario: str = ""
-    # Por default la app arranca en modo produccion.
-    # El usuario debe activar explicitamente el modo prueba.
     modo_prueba: bool = False
-    # Tema visual: "claro" (default) o "oscuro".
     tema: str = "claro"
-
-    # Procesos disponibles: nombre -> clase.
-    # Se llena en ``inicializar_procesos()``.
     procesos: dict = field(default_factory=dict)
 
     def ruta_json(self, proceso: str, archivo: str) -> Path:
-        """Devuelve la ruta a un JSON de un proceso."""
         return JSONS_DIR / proceso / archivo
 
     def nombres_procesos(self) -> list[str]:
-        """Lista los nombres de procesos disponibles."""
         return list(self.procesos.keys())
 
-    # -- Persistencia ------------------------------------------------
-
-    def _settings(self) -> SettingsService:
-        """Devuelve un SettingsService apuntando a ``PREFERENCIAS``."""
-        return SettingsService(settings_path=PREFERENCIAS)
-
     def cargar_preferencias(self) -> None:
-        """Carga preferencias desde ``data/settings.json`` (si existe).
-
-        ``SettingsService`` migra automaticamente desde el viejo
-        ``data/usuario.json`` si es la primera vez.
-        """
+        """Carga preferencias desde data/settings.json."""
+        if not PREFERENCIAS.exists():
+            return
         try:
-            svc = self._settings()
-        except OSError:
-            return  # no se puede acceder al archivo: no rompe el arranque
-        if svc.usuario:
-            self.usuario = svc.usuario
-        self.modo_prueba = svc.modo_prueba
-        if svc.tema in ("claro", "oscuro"):
-            self.tema = svc.tema
+            with PREFERENCIAS.open("r", encoding="utf-8") as f:
+                datos = json.load(f)
+            if isinstance(datos, dict):
+                self.usuario = datos.get("usuario", self.usuario)
+                self.modo_prueba = bool(datos.get("modo_prueba", False))
+                self.tema = datos.get("tema", "claro")
+        except (OSError, json.JSONDecodeError):
+            pass
 
     def guardar_preferencias(self) -> None:
-        """Guarda preferencias en ``data/settings.json``.
-
-        No lanza excepciones: si no se puede escribir, la app sigue
-        funcionando, solo no se persiste entre sesiones.
-
-        Usa ``PREFERENCIAS`` (no la constante ``DATA_DIR``) para que
-        monkey-patching de ``PREFERENCIAS`` en tests funcione correctamente.
-        """
+        """Guarda preferencias en data/settings.json."""
         try:
-            svc = self._settings()
-            svc.usuario = self.usuario
-            svc.modo_prueba = self.modo_prueba
-            svc.tema = self.tema
-            svc.save()
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            datos = {
+                "usuario": self.usuario,
+                "modo_prueba": self.modo_prueba,
+                "tema": self.tema,
+            }
+            with PREFERENCIAS.open("w", encoding="utf-8") as f:
+                json.dump(datos, f, ensure_ascii=False, indent=2)
         except OSError:
             pass
 
@@ -167,20 +96,17 @@ def get_config() -> Config:
     if _config is None:
         _config = Config()
         inicializar_procesos(_config)
-        # Primero cargamos preferencias (usuario, modo_prueba, tema).
         _config.cargar_preferencias()
-        # Si no hay preferencias guardadas, usamos el USERNAME del SO.
         if not _config.usuario:
             _config.usuario = os.environ.get("USERNAME", "usuario")
     return _config
 
 
 def inicializar_procesos(cfg: Config) -> None:
-    """Carga las clases de los 3 procesos en ``cfg.procesos``."""
-    # Import lazy para no romper imports circulares.
-    from procesos.comprobante import ProcesoComprobante
-    from procesos.fierro import ProcesoFierro
-    from procesos.zeus import ProcesoZeus
+    """Registra los 3 procesos disponibles en cfg.procesos."""
+    from core.comprobante import ProcesoComprobante
+    from core.fierro import ProcesoFierro
+    from core.zeus import ProcesoZeus
 
     cfg.procesos = {
         "comprobante": ProcesoComprobante,

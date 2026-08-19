@@ -36,79 +36,44 @@ No se usa `pyproject.toml`, `package.json` ni otro manifiesto de metadatos: el p
 
 ```
 Demo/
-├── main.py                     # Punto de entrada (UI por defecto, --cli para terminal)
+├── main.py                     # Punto de entrada (UI)
 ├── requirements.txt            # Dependencias
 ├── ContApp.spec                # Spec de PyInstaller (--onedir, console=False)
-├── ContApp.iss                 # Script de Inno Setup para el instalador .exe
 ├── README.md                   # Documentación pública
+├── simple_refactor.md          # Especificación y guía de refactorización
 │
-├── app/                        # Configuración, arranque y versionado
-│   ├── config.py               # Singleton de Config + rutas (RAIZ, JSONS_DIR, RESULTADOS_DIR, etc.)
-│   ├── version.py              # __version__, APP_NAME, GITHUB_REPO
-│   ├── bootstrap.py            # Registra servicios en el contenedor DI
-│   ├── container.py            # Mini contenedor de inyección de dependencias
-│   └── updater/                # Auto-actualización (checker/downloader/version_utils)
+├── app/                        # Configuración y versionado
+│   ├── config.py               # Singleton de Config + rutas (RAIZ, JSONS_DIR, RESULTADOS_DIR)
+│   └── version.py              # __version__, APP_NAME
 │
-├── procesos/                   # Lógica pura de negocio (sin dependencia de UI)
+├── core/                       # Lógica de negocio y utilidades (sin dependencia de UI)
 │   ├── base.py                 # ProcesoBase abstracto + ResultadoProceso + ProcesoCancelado
 │   ├── comprobante.py          # ProcesoComprobante
 │   ├── fierro.py               # ProcesoFierro
-│   └── zeus.py                 # ProcesoZeus (activo)
-│
-├── ui/                         # Interfaz gráfica (no sabe de pandas ni openpyxl)
-│   ├── recursos/tema.py        # Paleta + QSS global (claro/oscuro)
-│   ├── ventanas/               # Pantallas principales
-│   │   ├── principal.py        # VentanaPrincipal + sidebar + 5 secciones
-│   │   ├── ejecutar_proceso.py # PantallaProcesos + WorkerEjecucion (QThread)
-│   │   ├── editor_json.py      # Editor de diccionarios/JSONs
-│   │   ├── backups.py          # Gestor de copias de seguridad de JSONs
-│   │   ├── configuracion.py    # Bitácora y preferencias
-│   │   └── dialogo_actualizacion.py
-│   └── widgets/                # Componentes reutilizables (DropZone, tarjetas, switches, etc.)
-│
-├── utils/                      # Herramientas de apoyo (sin dependencia de UI)
+│   ├── zeus.py                 # ProcesoZeus
 │   ├── archivos.py             # Carpetas mensuales, timestamps, copiar/mover
-│   ├── bitacora.py             # Logger + parseo de registros + último proceso
-│   └── json_manager.py         # CRUD JSON + backup + restauración + detección de tipo + locks
+│   └── json_manager.py         # Lectura y escritura de JSONs
 │
-├── services/                   # Servicios registrados en el contenedor DI
-│   ├── settings_service.py     # Persistencia de preferencias (reemplaza usuario.json)
-│   ├── backup_service.py       # Política de backups de JSONs + restauración
-│   └── reporte_service.py      # Reporte de ejecución (logging + dict)
+├── ui/                         # Interfaz gráfica (PySide6)
+│   ├── recursos/tema.py        # Tema y estilos QSS
+│   ├── ventanas/               # Pantallas principales (principal, inicio, procesos, diccionarios)
+│   └── widgets/                # Componentes reutilizables (DropZone, SwitchModoPrueba, LogoContApp, ItemArchivo)
 │
-├── events/                     # Bus de eventos pub/sub thread-safe
+├── events/                     # Bus de eventos pub/sub
 │   ├── bus.py                  # EventBus singleton
-│   └── eventos.py              # Dataclasses de eventos (ProcesoIniciado, ProgresoProceso, etc.)
+│   └── eventos.py              # Dataclasses de eventos
 │
 ├── jsons/                      # Reglas editables (1 carpeta por proceso)
-│   ├── comprobante/            # 4 JSONs
+│   ├── comprobante/            # 5 JSONs
 │   ├── fierro/                 # 3 JSONs
 │   └── zeus/                   # 1 JSON
 │
-├── data/                       # Estado y datos persistentes
-│   ├── backups/                # Backups automáticos de JSONs
-│   ├── bitacora/bitacora.log   # Log automático (ignorado en git)
-│   └── settings.json           # Preferencias del usuario (ignorado en git)
-│
-├── log/                        # Logs de sesión y bitácora legible
-│   ├── bitacora.log
-│   └── BITACORA.md
-│
-├── tests/                      # Suite de pytest
-│   └── ...                     # Ver sección de tests
-│
-├── .github/workflows/           # CI/CD
-│   ├── tests.yml               # Tests en cada push/PR a main
-│   └── release.yml             # Build + release al pushear tag v*.*.*
-│
-├── scripts/                    # Scripts auxiliares de build y verificación
-│   └── build/                  # Scripts del bundle PyInstaller
-│       ├── build_portable_zip.py
-│       ├── check_zip.py
-│       └── verify_zip_final.py
-│
-└── docs/                        # Documentación del proyecto
-    └── context.md               # Documento de contexto del proyecto (humano)
+└── tests/                      # Suite de pytest (48 tests)
+    ├── test_archivos.py
+    ├── test_comprobante.py
+    ├── test_fierro.py
+    ├── test_json_manager.py
+    └── test_zeus.py
 ```
 
 ### Ubicaciones importantes fuera del repositorio

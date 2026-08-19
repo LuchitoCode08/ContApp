@@ -1,188 +1,217 @@
-"""Zona de drag & drop para archivos."""
+"""Zona de carga de archivos (DropZone) con lista interactiva y eliminación individual."""
 from __future__ import annotations
 
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QDragEnterEvent, QDropEvent, QFont
+from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from ui.widgets.item_archivo import ItemArchivo
+
 
 class DropZone(QFrame):
-    """Zona donde el usuario arrastra archivos o los selecciona con boton.
+    """Contenedor de archivos con soporte Drag & Drop y lista con botón de eliminar por ítem."""
 
-    Extensiones aceptadas: configurable (``extensiones_aceptadas``).
-
-    Emite ``archivos_seleccionados(list[Path])`` cuando se agregan archivos.
-    """
-
-    archivos_seleccionados = Signal(list)
+    archivos_cambiados = Signal(list)
 
     def __init__(
         self,
         extensiones_aceptadas: tuple[str, ...] = (),
-        mensaje: str = "Arrastra archivos aqui o haz clic para seleccionar",
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self.extensiones_aceptadas = tuple(
-            e.lower() for e in extensiones_aceptadas
-        )
+        self.extensiones_aceptadas = tuple(e.lower() for e in extensiones_aceptadas)
+        self._permitir_multiple = True
+        self._archivos: list[Path] = []
+
         self.setAcceptDrops(True)
-        self.setObjectName("DropZone")
-        self.setMinimumHeight(140)
-        self._actualizar_estilo(activo=False)
+        self.setObjectName("DropZoneBox")
+        self.setFixedHeight(140)
 
-        # Icono grande + etiqueta principal + sub-texto + boton.
-        self._icono = QLabel("⤓")
-        font_icono = QFont()
-        font_icono.setPointSize(40)
-        font_icono.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
-        self._icono.setFont(font_icono)
-        self._icono.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._icono.setStyleSheet("color: #5B6473; background: transparent;")
+        self._construir_ui()
+        self._actualizar_estado()
 
-        self._label = QLabel(mensaje)
-        self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._label.setWordWrap(True)
-        self._label.setStyleSheet(
-            "color: #1A1F2C; font-size: 13px; font-weight: 500;"
-            " background: transparent;"
+    def _construir_ui(self) -> None:
+        layout_principal = QVBoxLayout(self)
+        layout_principal.setContentsMargins(1, 1, 1, 1)
+        layout_principal.setSpacing(0)
+
+        self._stack = QStackedWidget()
+
+        # Vista 0: Vacía (Placeholder de Drag & Drop)
+        self._vista_vacia = QWidget()
+        layout_vacia = QVBoxLayout(self._vista_vacia)
+        layout_vacia.setContentsMargins(24, 28, 24, 28)
+        layout_vacia.setSpacing(10)
+        layout_vacia.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self._lbl_icono = QLabel("📁")
+        self._lbl_icono.setStyleSheet("font-size: 38px; background: transparent;")
+        self._lbl_icono.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout_vacia.addWidget(self._lbl_icono)
+
+        self._lbl_mensaje = QLabel("Arrastra tus archivos aquí o haz clic en Examinar")
+        self._lbl_mensaje.setStyleSheet("font-weight: 600; font-size: 14px; color: #1E293B; background: transparent;")
+        self._lbl_mensaje.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout_vacia.addWidget(self._lbl_mensaje)
+
+        self._lbl_hint = QLabel("Formatos permitidos")
+        self._lbl_hint.setStyleSheet("font-size: 12px; color: #64748B; background: transparent;")
+        self._lbl_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout_vacia.addWidget(self._lbl_hint)
+
+        self._stack.addWidget(self._vista_vacia)
+
+        # Vista 1: Lista de archivos cargados
+        self._vista_lista = QWidget()
+        layout_lista = QVBoxLayout(self._vista_lista)
+        layout_lista.setContentsMargins(8, 8, 8, 8)
+        layout_lista.setSpacing(6)
+
+        self._list_widget = QListWidget()
+        self._list_widget.setObjectName("archivos_list")
+        self._list_widget.setStyleSheet(
+            """
+            QListWidget#archivos_list {
+                background-color: transparent;
+                border: none;
+                outline: none;
+            }
+            QListWidget#archivos_list::item {
+                background-color: #FFFFFF;
+                border: 1px solid #E2E8F0;
+                border-radius: 8px;
+                margin-bottom: 6px;
+            }
+            QListWidget#archivos_list::item:hover {
+                border-color: #93C5FD;
+                background-color: #F8FAFC;
+            }
+            """
         )
+        layout_lista.addWidget(self._list_widget)
 
-        self._sub = QLabel("o usa el botón para explorar")
-        self._sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._sub.setStyleSheet(
-            "color: #5B6473; font-size: 11px; background: transparent;"
-        )
+        self._stack.addWidget(self._vista_lista)
+        layout_principal.addWidget(self._stack)
 
-        self._boton = QPushButton("Examinar archivos...")
-        self._boton.setObjectName("primary")
-        self._boton.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._boton.clicked.connect(self._abrir_dialogo)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 16, 20, 16)
-        layout.setSpacing(4)
-        layout.addWidget(self._icono)
-        layout.addWidget(self._label)
-        layout.addWidget(self._sub)
-        layout.addSpacing(6)
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-        btn_row.addWidget(self._boton)
-        btn_row.addStretch()
-        layout.addLayout(btn_row)
+        self._aplicar_borde(activo=False)
 
     def set_extensiones_aceptadas(self, extensiones: tuple[str, ...]) -> None:
-        """Actualiza las extensiones aceptadas."""
-        self.extensiones_aceptadas = tuple(
-            e.lower() for e in extensiones
-        )
+        self.extensiones_aceptadas = tuple(e.lower() for e in extensiones)
+        exts_str = ", ".join(self.extensiones_aceptadas)
+        self._lbl_hint.setText(f"Formatos aceptados: {exts_str}")
 
-    def set_mensaje(self, mensaje: str) -> None:
-        """Cambia el mensaje central."""
-        self._label.setText(mensaje)
+    def set_permitir_multiple(self, permitir: bool) -> None:
+        self._permitir_multiple = permitir
 
-    # -- Drag & drop --------------------------------------------------
+    def agregar_archivos(self, rutas: list[Path]) -> None:
+        nuevos = []
+        for r in rutas:
+            p = Path(r)
+            if self.extensiones_aceptadas and p.suffix.lower() not in self.extensiones_aceptadas:
+                continue
+            if not self._permitir_multiple:
+                self._archivos = [p]
+                break
+            if p not in self._archivos:
+                self._archivos.append(p)
+                nuevos.append(p)
 
-    def _actualizar_estilo(self, activo: bool) -> None:
-        """Cambia el estilo segun haya drag activo encima o no."""
-        from ui.recursos.tema import _paleta
-        p = _paleta()
-        if activo:
-            self.setStyleSheet(
-                f"""
-                DropZone {{
-                    background-color: {p.surface_alt};
-                    border: 2px dashed {p.primary};
-                    border-radius: 12px;
-                }}
-                """
-            )
+        self._refrescar_lista()
+        self.archivos_cambiados.emit(self._archivos)
+
+    def eliminar_archivo(self, ruta: Path) -> None:
+        if ruta in self._archivos:
+            self._archivos.remove(ruta)
+            self._refrescar_lista()
+            self.archivos_cambiados.emit(self._archivos)
+
+    def vaciar(self) -> None:
+        self._archivos.clear()
+        self._refrescar_lista()
+        self.archivos_cambiados.emit(self._archivos)
+
+    def obtener_archivos(self) -> list[Path]:
+        return list(self._archivos)
+
+    def _refrescar_lista(self) -> None:
+        self._list_widget.clear()
+        for ruta in self._archivos:
+            item = QListWidgetItem(self._list_widget)
+            item_widget = ItemArchivo(ruta)
+            item_widget.eliminar_solicitado.connect(self.eliminar_archivo)
+            item.setSizeHint(item_widget.sizeHint())
+            self._list_widget.addItem(item)
+            self._list_widget.setItemWidget(item, item_widget)
+
+        self._actualizar_estado()
+
+    def _actualizar_estado(self) -> None:
+        if self._archivos:
+            self._stack.setCurrentIndex(1)
         else:
-            self.setStyleSheet(
-                f"""
-                DropZone {{
-                    background-color: {p.surface};
-                    border: 2px dashed {p.border};
-                    border-radius: 12px;
-                }}
-                DropZone:hover {{
-                    background-color: {p.surface_alt};
-                    border-color: {p.primary};
-                }}
-                """
-            )
+            self._stack.setCurrentIndex(0)
 
-    def _aplicar_tema(self, paleta) -> None:
-        """Reaplica el fondo de la zona y los textos."""
-        self._actualizar_estilo(activo=False)
-        self._icono.setStyleSheet(
-            f"color: {paleta.fg_muted}; background: transparent;"
+    def _aplicar_borde(self, activo: bool) -> None:
+        borde = "2px dashed #2563EB" if activo else "1px solid #CBD5E1"
+        bg = "#EFF6FF" if activo else "#FFFFFF"
+        self.setStyleSheet(
+            f"""
+            QFrame#DropZoneBox {{
+                background-color: {bg};
+                border: {borde};
+                border-radius: 10px;
+            }}
+            """
         )
-        self._label.setStyleSheet(
-            f"color: {paleta.fg}; font-size: 13px; font-weight: 500;"
-            " background: transparent;"
-        )
-        self._sub.setStyleSheet(
-            f"color: {paleta.fg_muted}; font-size: 11px;"
-            " background: transparent;"
-        )
+
+    # --- Drag & Drop ---
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
-            self._actualizar_estilo(activo=True)
+            self._aplicar_borde(activo=True)
 
     def dragLeaveEvent(self, event) -> None:
-        self._actualizar_estilo(activo=False)
+        self._aplicar_borde(activo=False)
 
     def dropEvent(self, event: QDropEvent) -> None:
-        self._actualizar_estilo(activo=False)
+        self._aplicar_borde(activo=False)
         urls = event.mimeData().urls()
         archivos = []
         for url in urls:
             if url.isLocalFile():
                 archivos.append(Path(url.toLocalFile()))
         if archivos:
-            self._emitir(archivos)
+            self.agregar_archivos(archivos)
 
-    # -- Boton examinar -----------------------------------------------
+    # --- Diálogo de Archivos ---
 
-    def _abrir_dialogo(self) -> None:
-        filtro = self._filtro_dialogo()
-        paths, _ = QFileDialog.getOpenFileNames(
-            self,
-            "Seleccionar archivos",
-            str(Path.home() / "Downloads"),
-            filtro,
-        )
+    def abrir_dialogo_examinar(self) -> None:
+        exts = " ".join(f"*{e}" for e in self.extensiones_aceptadas) if self.extensiones_aceptadas else "*.*"
+        filtro = f"Archivos ({exts})" if self.extensiones_aceptadas else "Todos los archivos (*.*)"
+
+        if self._permitir_multiple:
+            paths, _ = QFileDialog.getOpenFileNames(
+                self, "Seleccionar archivos", str(Path.home() / "Downloads"), filtro,
+            )
+        else:
+            path, _ = QFileDialog.getOpenFileName(
+                self, "Seleccionar archivo", str(Path.home() / "Downloads"), filtro,
+            )
+            paths = [path] if path else []
+
         if paths:
-            self._emitir([Path(p) for p in paths])
-
-    def _filtro_dialogo(self) -> str:
-        if not self.extensiones_aceptadas:
-            return "Todos los archivos (*)"
-        exts = " ".join(f"*{e}" for e in self.extensiones_aceptadas)
-        return f"Archivos ({exts}) ({exts})"
-
-    # -- Emision ------------------------------------------------------
-
-    def _emitir(self, archivos: list[Path]) -> None:
-        # Filtrar por extension si corresponde.
-        if self.extensiones_aceptadas:
-            archivos = [
-                a for a in archivos
-                if a.suffix.lower() in self.extensiones_aceptadas
-            ]
-        if archivos:
-            self.archivos_seleccionados.emit(archivos)
+            self.agregar_archivos([Path(p) for p in paths])

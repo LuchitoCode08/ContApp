@@ -1,23 +1,95 @@
-"""Switch visual para activar/desactivar el modo prueba.
-
-Usa un QCheckBox con stylesheet custom (no la libreria nativa fea).
-"""
+"""Switch visual para activar/desactivar el modo prueba en la topbar."""
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import (
+    Property,
+    QEasingCurve,
+    QPropertyAnimation,
+    QRectF,
+    Qt,
+    Signal,
+)
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
-    QCheckBox,
+    QAbstractButton,
     QHBoxLayout,
     QLabel,
     QWidget,
 )
 
 
-class SwitchModoPrueba(QWidget):
-    """Toggle visual que activa/desactiva el modo prueba global.
+class ToggleSwitch(QAbstractButton):
+    """Control de switch deslizante tipo píldora 100% redondeado con animación suave."""
 
-    Emite ``modo_prueba_cambiado(bool)`` cuando el usuario cambia el estado.
-    """
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setCheckable(True)
+        self.setChecked(False)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedSize(46, 24)
+
+        self._thumb_position: float = 0.0
+        self._anim = QPropertyAnimation(self, b"thumb_position", self)
+        self._anim.setDuration(130)
+        self._anim.setEasingCurve(QEasingCurve.Type.InOutQuad)
+
+        self.toggled.connect(self._on_toggled)
+
+    def get_thumb_position(self) -> float:
+        return self._thumb_position
+
+    def set_thumb_position(self, pos: float) -> None:
+        self._thumb_position = pos
+        self.update()
+
+    thumb_position = Property(float, get_thumb_position, set_thumb_position)
+
+    def _on_toggled(self, checked: bool) -> None:
+        self._anim.stop()
+        self._anim.setStartValue(self._thumb_position)
+        self._anim.setEndValue(1.0 if checked else 0.0)
+        self._anim.start()
+
+    def set_checked_instant(self, checked: bool) -> None:
+        """Establece el estado sin animación (para inicialización)."""
+        self.setChecked(checked)
+        self._thumb_position = 1.0 if checked else 0.0
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        w = float(self.width())
+        h = float(self.height())
+        radius = h / 2.0
+
+        # Color de fondo según el estado
+        # Activo: Azul (#2563EB), Inactivo: Gris suave (#CBD5E1)
+        if self.isChecked():
+            track_color = QColor("#2563EB")
+        else:
+            track_color = QColor("#CBD5E1")
+
+        # Dibujar píldora redondeada de fondo
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(track_color)
+        p.drawRoundedRect(QRectF(0, 0, w, h), radius, radius)
+
+        # Círculo deslizante blanco (Thumb)
+        margin = 2.5
+        thumb_diameter = h - 2 * margin
+        max_travel = w - 2 * margin - thumb_diameter
+        thumb_x = margin + (self._thumb_position * max_travel)
+        thumb_y = margin
+
+        p.setBrush(QColor("#FFFFFF"))
+        p.drawEllipse(QRectF(thumb_x, thumb_y, thumb_diameter, thumb_diameter))
+        p.end()
+
+
+class SwitchModoPrueba(QWidget):
+    """Contenedor con label y toggle switch para el Modo Prueba."""
 
     modo_prueba_cambiado = Signal(bool)
 
@@ -26,84 +98,22 @@ class SwitchModoPrueba(QWidget):
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(10)
 
         self._label = QLabel("Modo prueba")
-        self._label.setStyleSheet("font-size: 12px;")
+        self._label.setStyleSheet("font-size: 13px; font-weight: 600; color: #475569;")
         layout.addWidget(self._label)
 
-        self._checkbox = QCheckBox()
-        self._checkbox.setObjectName("switch")
-        self._checkbox.setToolTip(
+        self._switch = ToggleSwitch()
+        self._switch.setToolTip(
             "Cuando está activo, los resultados se guardan en una carpeta "
-            "temporal y los originales NO se tocan."
+            "temporal y los archivos originales NO se modifican."
         )
-        self._checkbox.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._checkbox.stateChanged.connect(self._on_change)
-        layout.addWidget(self._checkbox)
-
-        self._estado = QLabel("OFF")
-        self._estado.setStyleSheet(
-            "color: #5B6473; font-size: 11px; font-weight: 600;"
-            " min-width: 28px;"
-        )
-        layout.addWidget(self._estado)
-
-        self._aplicar_estilo_switch(activo=False)
-
-    def _on_change(self, state: int) -> None:
-        activo = state == Qt.CheckState.Checked.value
-        self._aplicar_estilo_switch(activo)
-        self._estado.setText("ON" if activo else "OFF")
-        self._estado.setStyleSheet(
-            f"color: {'#16A34A' if activo else '#5B6473'}; "
-            "font-size: 11px; font-weight: 600; min-width: 28px;"
-        )
-        self.modo_prueba_cambiado.emit(activo)
-
-    def _aplicar_estilo_switch(self, activo: bool) -> None:
-        """Pinta el checkbox como un switch deslizante."""
-        bg = "#16A34A" if activo else "#A8AEBA"
-        self._checkbox.setStyleSheet(
-            f"""
-            QCheckBox#switch {{
-                background-color: {bg};
-                border-radius: 14px;
-                min-width: 44px;
-                max-width: 44px;
-                min-height: 26px;
-                max-height: 26px;
-            }}
-            QCheckBox#switch::indicator {{
-                width: 20px;
-                height: 20px;
-                border-radius: 10px;
-                background-color: white;
-                margin: 3px;
-            }}
-            QCheckBox#switch::indicator:unchecked {{
-                subcontrol-position: left center;
-            }}
-            QCheckBox#switch::indicator:checked {{
-                subcontrol-position: right center;
-            }}
-            """
-        )
+        self._switch.toggled.connect(self.modo_prueba_cambiado.emit)
+        layout.addWidget(self._switch)
 
     def esta_activo(self) -> bool:
-        return self._checkbox.isChecked()
+        return self._switch.isChecked()
 
     def set_activo(self, activo: bool) -> None:
-        self._checkbox.setChecked(activo)
-
-    def _aplicar_tema(self, paleta) -> None:
-        """Reaplica colores del label y del indicador ON/OFF."""
-        self._label.setStyleSheet(
-            f"color: {paleta.fg}; font-size: 12px;"
-        )
-        activo = self.esta_activo()
-        self._estado.setStyleSheet(
-            f"color: {'#16A34A' if activo else paleta.fg_muted}; "
-            "font-size: 11px; font-weight: 600; min-width: 28px;"
-        )
-        # El switch en si no cambia (verde/blanco universales).
+        self._switch.set_checked_instant(activo)

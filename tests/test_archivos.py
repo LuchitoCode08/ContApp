@@ -19,7 +19,7 @@ RAIZ = Path(__file__).resolve().parent.parent
 if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
-from utils.archivos import (
+from core.archivos import (
     carpeta_modo_prueba,
     carpeta_resultados,
     copiar_a_carpeta,
